@@ -17,7 +17,7 @@ Production:
 ### Embedding Server (GPU)
 
 ```bash
-pip install '.[server]'
+uv sync --extra server
 bentoml serve server.service:EmbeddingService --port 8200
 ```
 
@@ -28,7 +28,7 @@ Loads bge-large-en-v1.5 on both GPUs and round-robins batches between them. Edit
 Ingestion is the one-time job that populates the database. It downloads the JSONL source files, chunks each document into ~200 word pieces, sends them to the GPU server for embedding, and inserts the vectors into Postgres.
 
 ```bash
-pip install '.[client]'
+uv sync --extra client
 
 # Ingest specific datasets
 python -m client.ingest --datasets 1 2 3
@@ -64,7 +64,7 @@ The `--reader-password` flag creates a read-only `epstein_reader` Postgres role 
 docker compose up -d
 
 # Or run API directly
-pip install '.[api]'
+uv sync --extra api
 DATABASE_URL=postgresql://epstein:epstein@localhost:5432/epstein uvicorn api.main:app --reload
 ```
 
