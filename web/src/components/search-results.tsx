@@ -118,7 +118,7 @@ export function SearchResults({
               <VectorResultCard key={`${r.efta_id}-${r.chunk_index}`} result={r} index={i} onFindSimilar={onFindSimilar} />
             ))
           : textResults.map((r, i) => (
-              <TextResultCard key={r.efta_id} result={r} index={i} />
+              <TextResultCard key={r.efta_id} result={r} index={i} onFindSimilar={onFindSimilar} />
             ))}
 
         {/* Sentinel for infinite scroll */}

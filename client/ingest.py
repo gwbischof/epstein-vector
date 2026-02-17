@@ -69,10 +69,10 @@ def ensure_schema(conn: psycopg.Connection, reader_password: str | None = None) 
     conn.execute(SCHEMA_SQL)
     if reader_password:
         # CREATE ROLE can't use query params, but password is operator-supplied (not user input)
-        conn.execute(
+        cur = conn.execute(
             "SELECT 1 FROM pg_roles WHERE rolname = 'epstein_reader'"
         )
-        if conn.fetchone() is None:
+        if cur.fetchone() is None:
             conn.execute(
                 psycopg.sql.SQL("CREATE ROLE epstein_reader LOGIN PASSWORD {}").format(
                     psycopg.sql.Literal(reader_password)
@@ -95,8 +95,8 @@ def insert_documents(conn: psycopg.Connection, docs: list[dict]) -> int:
                 ON CONFLICT (efta_id) DO NOTHING
                 """,
                 (
-                    doc.get("efta_id"),
-                    doc.get("dataset"),
+                    doc.get("efta_id") or doc.get("efta"),
+                    int(doc.get("dataset", 0)),
                     doc.get("url", ""),
                     doc.get("pages", 0),
                     doc.get("word_count", 0),
@@ -170,7 +170,7 @@ def ingest_dataset(
     logger.info(f"Inserted {doc_count} new documents")
 
     # Filter out already-embedded docs
-    new_docs = [d for d in docs if d.get("efta_id") not in done_ids]
+    new_docs = [d for d in docs if (d.get("efta_id") or d.get("efta")) not in done_ids]
     logger.info(f"Skipping {len(docs) - len(new_docs)} already-embedded docs, {len(new_docs)} remaining")
 
     # Chunk
@@ -189,7 +189,7 @@ def ingest_dataset(
 
     # Track newly inserted ids
     for d in new_docs:
-        done_ids.add(d.get("efta_id"))
+        done_ids.add(d.get("efta_id") or d.get("efta"))
 
     return {"dataset": dataset, "docs": len(docs), "new": len(new_docs), "chunks": chunk_count}
 

@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://tommycarstensen.com/epstein"
+BASE_URL = "https://tommycarstensen.com/epstein/data/pdf_text"
 DATASETS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 DATA_DIR = Path("data")
 

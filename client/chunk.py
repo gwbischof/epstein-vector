@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
 MIN_WORD_COUNT = 5
+MIN_ALPHA_RATIO = 0.5  # reject garbage OCR: at least 50% of non-whitespace chars must be letters
 
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=CHUNK_SIZE,
@@ -41,8 +42,8 @@ def chunk_document(doc: dict) -> list[Chunk]:
 
     Expected fields: efta_id, dataset, text, word_count, extracted.
     """
-    efta_id = doc.get("efta_id", "")
-    dataset = doc.get("dataset", 0)
+    efta_id = doc.get("efta_id") or doc.get("efta", "")
+    dataset = int(doc.get("dataset", 0))
     text = doc.get("text", "")
     word_count = doc.get("word_count", 0)
     extracted = doc.get("extracted", True)
@@ -50,6 +51,14 @@ def chunk_document(doc: dict) -> list[Chunk]:
     # Skip non-extracted or very short docs
     if not extracted or word_count < MIN_WORD_COUNT or not text.strip():
         return []
+
+    # Skip garbage OCR: check ratio of alphabetic chars to non-whitespace chars
+    non_ws = [c for c in text if not c.isspace()]
+    if non_ws:
+        alpha_ratio = sum(1 for c in non_ws if c.isalpha()) / len(non_ws)
+        if alpha_ratio < MIN_ALPHA_RATIO:
+            logger.debug(f"Skipping {efta_id}: alpha_ratio={alpha_ratio:.2f}")
+            return []
 
     prefix = f"[{efta_id} | Dataset {dataset}] "
 

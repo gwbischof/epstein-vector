@@ -1,16 +1,17 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { FileText, ExternalLink, Hash, BookOpen } from "lucide-react";
+import { FileText, ExternalLink, Hash, BookOpen, Sparkles } from "lucide-react";
 import type { TextResult } from "@/lib/types";
 import { eftaUrl } from "@/lib/utils";
 
 interface TextResultCardProps {
   result: TextResult;
   index: number;
+  onFindSimilar?: (eftaId: string, chunkIndex: number) => void;
 }
 
-export function TextResultCard({ result, index }: TextResultCardProps) {
+export function TextResultCard({ result, index, onFindSimilar }: TextResultCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -60,8 +61,8 @@ export function TextResultCard({ result, index }: TextResultCardProps) {
         dangerouslySetInnerHTML={{ __html: result.headline }}
       />
 
-      {/* View on DOJ link */}
-      <div className="mt-3 pt-3 border-t border-slate-700/30">
+      {/* Footer actions */}
+      <div className="mt-3 pt-3 border-t border-slate-700/30 flex items-center gap-4">
         <a
           href={eftaUrl(result.efta_id, result.dataset)}
           target="_blank"
@@ -71,6 +72,15 @@ export function TextResultCard({ result, index }: TextResultCardProps) {
           <ExternalLink className="w-3 h-3" />
           View on DOJ EFTA
         </a>
+        {onFindSimilar && (
+          <button
+            onClick={() => onFindSimilar(result.efta_id, 0)}
+            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-400 transition-colors"
+          >
+            <Sparkles className="w-3 h-3" />
+            More like this
+          </button>
+        )}
       </div>
     </motion.div>
   );

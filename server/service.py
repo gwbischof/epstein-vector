@@ -18,17 +18,16 @@ logger = logging.getLogger(__name__)
 @bentoml.service(
     name="embedding_service",
     traffic={"timeout": 300},
-    resources={"gpu": 2, "gpu_type": "nvidia-gtx-1080-ti"},
+    resources={"gpu": 1, "gpu_type": "nvidia-gtx-1080-ti"},
 )
 class EmbeddingService:
     def __init__(self):
         self.models: list[BGEModel] = []
-        for i in range(2):
-            m = BGEModel()
-            m.load(f"cuda:{i}")
-            self.models.append(m)
-        self._gpu_cycle = itertools.cycle(range(2))
-        logger.info("Embedding service ready with 2 GPUs")
+        m = BGEModel()
+        m.load("cuda:1")
+        self.models.append(m)
+        self._gpu_cycle = itertools.cycle(range(1))
+        logger.info("Embedding service ready with 1 GPU")
 
     @bentoml.api
     def embed(self, texts: list[str]) -> list[list[float]]:
