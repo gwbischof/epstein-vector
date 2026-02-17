@@ -11,12 +11,12 @@ import { SearchResults } from "@/components/search-results";
 import { useSearch } from "@/hooks/use-search";
 
 const EXAMPLE_QUERIES = [
-  "flight logs",
-  "payments to politicians",
-  "Ghislaine Maxwell",
-  "island visitors",
-  "FBI interview",
-  "wire transfers",
+  { label: "flight logs", desc: "plain search" },
+  { label: "maxw*", desc: "wildcard" },
+  { label: '"wire transfer"', desc: "exact phrase" },
+  { label: "Maxwell OR Brunel", desc: "OR" },
+  { label: "island -vacation", desc: "NOT" },
+  { label: "payments to politicians", desc: "semantic" },
 ];
 
 export default function SearchPage() {
@@ -30,9 +30,12 @@ export default function SearchPage() {
     vectorResults,
     textResults,
     loading,
+    loadingMore,
     error,
     hasSearched,
+    hasMore,
     executeSearch,
+    loadMore,
   } = useSearch();
 
   const hasResults = vectorResults.length > 0 || textResults.length > 0 || hasSearched;
@@ -143,20 +146,12 @@ export default function SearchPage() {
                   <div className="flex flex-wrap justify-center gap-2">
                     {EXAMPLE_QUERIES.map((eq) => (
                       <button
-                        key={eq}
-                        onClick={() => {
-                          setQuery(eq);
-                          // Small delay so the query state propagates
-                          setTimeout(() => {
-                            const apiKey = localStorage.getItem("epstein-api-key");
-                            if (apiKey) {
-                              setQuery(eq);
-                            }
-                          }, 50);
-                        }}
-                        className="glass glass-hover rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-cyan-400 transition-colors"
+                        key={eq.label}
+                        onClick={() => setQuery(eq.label)}
+                        className="glass glass-hover rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-cyan-400 transition-colors flex items-center gap-1.5"
                       >
-                        &ldquo;{eq}&rdquo;
+                        <span className="text-slate-300">{eq.label}</span>
+                        <span className="text-[9px] text-slate-600 uppercase tracking-wider">({eq.desc})</span>
                       </button>
                     ))}
                   </div>
@@ -196,8 +191,11 @@ export default function SearchPage() {
                   vectorResults={vectorResults}
                   textResults={textResults}
                   loading={loading}
+                  loadingMore={loadingMore}
                   error={error}
                   hasSearched={hasSearched}
+                  hasMore={hasMore}
+                  onLoadMore={loadMore}
                 />
               </motion.div>
             )}

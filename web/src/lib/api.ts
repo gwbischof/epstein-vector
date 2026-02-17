@@ -9,10 +9,11 @@ export async function vectorSearch(
   query: string,
   apiKey: string,
   limit: number = 20,
+  offset: number = 0,
   dataset?: number | null,
   signal?: AbortSignal,
 ): Promise<VectorSearchResponse> {
-  const body: Record<string, unknown> = { query, limit };
+  const body: Record<string, unknown> = { query, limit, offset };
   if (dataset != null) body.dataset = dataset;
 
   const res = await fetch(`${BASE_URL}/vector_search`, {
@@ -37,10 +38,11 @@ export async function textSearch(
   query: string,
   apiKey: string,
   limit: number = 20,
+  offset: number = 0,
   dataset?: number | null,
   signal?: AbortSignal,
 ): Promise<TextSearchResponse> {
-  const body: Record<string, unknown> = { query, limit };
+  const body: Record<string, unknown> = { query, limit, offset };
   if (dataset != null) body.dataset = dataset;
 
   const res = await fetch(`${BASE_URL}/text_search`, {

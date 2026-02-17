@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +23,7 @@ def set_model(model):
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
     dataset: int | None = None
 
 
@@ -63,9 +65,9 @@ def search(req: SearchRequest) -> SearchResponse:
             JOIN documents d ON d.efta_id = c.efta_id
             WHERE d.dataset = %s
             ORDER BY c.embedding <=> %s::halfvec
-            LIMIT %s
+            LIMIT %s OFFSET %s
         """
-        params = (vec_str, req.dataset, vec_str, req.limit)
+        params = (vec_str, req.dataset, vec_str, req.limit, req.offset)
     else:
         sql = """
             SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
@@ -73,9 +75,9 @@ def search(req: SearchRequest) -> SearchResponse:
             FROM chunks c
             JOIN documents d ON d.efta_id = c.efta_id
             ORDER BY c.embedding <=> %s::halfvec
-            LIMIT %s
+            LIMIT %s OFFSET %s
         """
-        params = (vec_str, vec_str, req.limit)
+        params = (vec_str, vec_str, req.limit, req.offset)
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -100,6 +102,7 @@ def search(req: SearchRequest) -> SearchResponse:
 class TextSearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
     dataset: int | None = None
 
 
@@ -116,35 +119,92 @@ class TextSearchResponse(BaseModel):
     results: list[TextResult]
 
 
+def _has_wildcards(query: str) -> bool:
+    """Check if the query contains wildcard characters."""
+    return "*" in query
+
+
+def _build_wildcard_tsquery(query: str) -> str:
+    """Build a raw tsquery string with :* prefix matching for wildcard terms.
+
+    Supports: word* (prefix), OR between terms, - for NOT.
+    Terms without * are matched exactly. All terms are ANDed unless OR is used.
+    """
+    tokens = query.split()
+    parts: list[str] = []
+    op = "&"
+
+    for token in tokens:
+        upper = token.upper()
+        if upper == "OR":
+            op = "|"
+            continue
+        if upper == "AND":
+            op = "&"
+            continue
+
+        negate = token.startswith("-")
+        if negate:
+            token = token[1:]
+
+        # Strip wildcard, sanitize to alphanumeric
+        is_prefix = token.endswith("*")
+        word = re.sub(r"[^\w]", "", token.rstrip("*"))
+        if not word:
+            continue
+
+        term = f"'{word}':*" if is_prefix else f"'{word}'"
+        if negate:
+            term = f"!{term}"
+
+        if parts:
+            parts.append(op)
+        parts.append(term)
+        op = "&"  # reset to AND after each term
+
+    return " ".join(parts) if parts else "''"
+
+
 def text_search(req: TextSearchRequest) -> TextSearchResponse:
     """Full-text search over documents."""
     pool = get_pool()
 
-    # Convert query to tsquery — plainto_tsquery handles plain text safely
-    if req.dataset is not None:
-        sql = """
-            SELECT efta_id, dataset, word_count,
-                   ts_rank(tsv, plainto_tsquery('english', %s)) AS rank,
-                   ts_headline('english', text, plainto_tsquery('english', %s),
-                               'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
-            FROM documents
-            WHERE tsv @@ plainto_tsquery('english', %s) AND dataset = %s
-            ORDER BY rank DESC
-            LIMIT %s
-        """
-        params = (req.query, req.query, req.query, req.dataset, req.limit)
+    use_wildcard = _has_wildcards(req.query)
+
+    # Choose tsquery function:
+    # - Wildcards: to_tsquery with manually built prefix expressions
+    # - Normal: websearch_to_tsquery for AND, OR, NOT, "exact phrases"
+    if use_wildcard:
+        tsquery_expr = "to_tsquery('english', %s)"
+        query_param = _build_wildcard_tsquery(req.query)
     else:
-        sql = """
+        tsquery_expr = "websearch_to_tsquery('english', %s)"
+        query_param = req.query
+
+    if req.dataset is not None:
+        sql = f"""
             SELECT efta_id, dataset, word_count,
-                   ts_rank(tsv, plainto_tsquery('english', %s)) AS rank,
-                   ts_headline('english', text, plainto_tsquery('english', %s),
+                   ts_rank(tsv, {tsquery_expr}) AS rank,
+                   ts_headline('english', text, {tsquery_expr},
                                'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
             FROM documents
-            WHERE tsv @@ plainto_tsquery('english', %s)
+            WHERE tsv @@ {tsquery_expr} AND dataset = %s
             ORDER BY rank DESC
-            LIMIT %s
+            LIMIT %s OFFSET %s
         """
-        params = (req.query, req.query, req.query, req.limit)
+        params = (query_param, query_param, query_param, req.dataset, req.limit, req.offset)
+    else:
+        sql = f"""
+            SELECT efta_id, dataset, word_count,
+                   ts_rank(tsv, {tsquery_expr}) AS rank,
+                   ts_headline('english', text, {tsquery_expr},
+                               'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
+            FROM documents
+            WHERE tsv @@ {tsquery_expr}
+            ORDER BY rank DESC
+            LIMIT %s OFFSET %s
+        """
+        params = (query_param, query_param, query_param, req.limit, req.offset)
 
     with pool.connection() as conn:
         with conn.cursor() as cur:

@@ -8,6 +8,8 @@ import type {
   TextResult,
 } from "@/lib/types";
 
+const PAGE_SIZE = 20;
+
 export function useSearch() {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<SearchMode>("semantic");
@@ -15,9 +17,13 @@ export function useSearch() {
   const [vectorResults, setVectorResults] = useState<VectorResult[]>([]);
   const [textResults, setTextResults] = useState<TextResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
+  // Track what query/mode/dataset produced the current results for loadMore
+  const lastSearchRef = useRef<{ query: string; mode: SearchMode; dataset: number | null } | null>(null);
 
   const search = useCallback(
     async (q: string, m: SearchMode, d: number | null) => {
@@ -32,7 +38,6 @@ export function useSearch() {
         return;
       }
 
-      // Abort any in-flight request
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -40,16 +45,20 @@ export function useSearch() {
       setLoading(true);
       setError(null);
       setHasSearched(true);
+      setHasMore(true);
+      lastSearchRef.current = { query: q, mode: m, dataset: d };
 
       try {
         if (m === "semantic") {
-          const res = await vectorSearch(q, apiKey, 20, d, controller.signal);
+          const res = await vectorSearch(q, apiKey, PAGE_SIZE, 0, d, controller.signal);
           setVectorResults(res.results);
           setTextResults([]);
+          setHasMore(res.results.length >= PAGE_SIZE);
         } else {
-          const res = await textSearch(q, apiKey, 20, d, controller.signal);
+          const res = await textSearch(q, apiKey, PAGE_SIZE, 0, d, controller.signal);
           setTextResults(res.results);
           setVectorResults([]);
+          setHasMore(res.results.length >= PAGE_SIZE);
         }
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -60,6 +69,39 @@ export function useSearch() {
     },
     [],
   );
+
+  const loadMore = useCallback(async () => {
+    const last = lastSearchRef.current;
+    if (!last || loadingMore || !hasMore) return;
+
+    const apiKey =
+      typeof window !== "undefined"
+        ? localStorage.getItem("epstein-api-key") ?? ""
+        : "";
+    if (!apiKey) return;
+
+    const controller = new AbortController();
+    setLoadingMore(true);
+
+    try {
+      if (last.mode === "semantic") {
+        const offset = vectorResults.length;
+        const res = await vectorSearch(last.query, apiKey, PAGE_SIZE, offset, last.dataset, controller.signal);
+        setVectorResults((prev) => [...prev, ...res.results]);
+        setHasMore(res.results.length >= PAGE_SIZE);
+      } else {
+        const offset = textResults.length;
+        const res = await textSearch(last.query, apiKey, PAGE_SIZE, offset, last.dataset, controller.signal);
+        setTextResults((prev) => [...prev, ...res.results]);
+        setHasMore(res.results.length >= PAGE_SIZE);
+      }
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      // Silently fail on load-more errors — user can scroll again
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, vectorResults.length, textResults.length]);
 
   const executeSearch = useCallback(() => {
     search(query, mode, dataset);
@@ -75,8 +117,11 @@ export function useSearch() {
     vectorResults,
     textResults,
     loading,
+    loadingMore,
     error,
     hasSearched,
+    hasMore,
     executeSearch,
+    loadMore,
   };
 }

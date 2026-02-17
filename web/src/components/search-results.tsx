@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { SearchX, Radar } from "lucide-react";
 import type { VectorResult, TextResult, SearchMode } from "@/lib/types";
@@ -11,8 +12,11 @@ interface SearchResultsProps {
   vectorResults: VectorResult[];
   textResults: TextResult[];
   loading: boolean;
+  loadingMore: boolean;
   error: string | null;
   hasSearched: boolean;
+  hasMore: boolean;
+  onLoadMore: () => void;
 }
 
 export function SearchResults({
@@ -20,9 +24,32 @@ export function SearchResults({
   vectorResults,
   textResults,
   loading,
+  loadingMore,
   error,
   hasSearched,
+  hasMore,
+  onLoadMore,
 }: SearchResultsProps) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+          onLoadMore();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, onLoadMore]);
+
   if (error) {
     return (
       <motion.div
@@ -78,7 +105,7 @@ export function SearchResults({
   return (
     <AnimatePresence mode="wait">
       <motion.div
-        key={`${mode}-${results.length}`}
+        key={`${mode}-results`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -92,14 +119,27 @@ export function SearchResults({
               <TextResultCard key={r.efta_id} result={r} index={i} />
             ))}
 
-        {results.length > 0 && (
+        {/* Sentinel for infinite scroll */}
+        <div ref={sentinelRef} className="h-1" />
+
+        {/* Loading more indicator */}
+        {loadingMore && (
+          <div className="flex justify-center py-6">
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full spin-slow" />
+              <span className="text-xs text-slate-500 uppercase tracking-widest">Loading more...</span>
+            </div>
+          </div>
+        )}
+
+        {/* End of results */}
+        {!hasMore && results.length > 0 && (
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: results.length * 0.04 + 0.3 }}
             className="text-center text-[10px] text-slate-600 uppercase tracking-widest py-4"
           >
-            {results.length} result{results.length !== 1 ? "s" : ""}
+            {results.length} result{results.length !== 1 ? "s" : ""} &middot; End of results
           </motion.p>
         )}
       </motion.div>
