@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: epstein-vector-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: epstein
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-epstein}
+      POSTGRES_DB: epstein
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U epstein"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: epstein-vector-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://epstein:${POSTGRES_PASSWORD:-epstein}@epstein-vector-pg:5432/epstein
+      API_KEY: ${API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
