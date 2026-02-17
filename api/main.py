@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -10,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 from api import search as search_module
-from api.db import close_conn
+from api.db import close_pool
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 def verify_api_key(key: str | None = Security(api_key_header)):
     if not API_KEY:
         return  # No key configured = no auth
-    if key != API_KEY:
+    if key is None or not hmac.compare_digest(key, API_KEY):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -35,13 +36,16 @@ async def lifespan(app: FastAPI):
     search_module.set_model(model)
     logger.info("Embedding model loaded")
     yield
-    close_conn()
+    close_pool()
 
 
 app = FastAPI(
     title="Epstein Vector Search",
     description="Semantic search over DOJ Epstein Library documents",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 

@@ -20,7 +20,7 @@ services:
     container_name: epstein-vector-api
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://epstein:${POSTGRES_PASSWORD:-epstein}@epstein-vector-pg:5432/epstein
+      DATABASE_URL: postgresql://epstein_reader:${READER_PASSWORD:-epstein}@epstein-vector-pg:5432/epstein
       API_KEY: ${API_KEY:-}
     depends_on:
       postgres:

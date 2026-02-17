@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 
 import psycopg
+import psycopg.sql
 from tqdm import tqdm
 
 from client.chunk import Chunk, chunk_documents
@@ -49,12 +50,31 @@ CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks
     USING hnsw (embedding halfvec_cosine_ops);
 
 CREATE INDEX IF NOT EXISTS chunks_efta_idx ON chunks (efta_id);
+
+"""
+
+READER_GRANTS_SQL = """
+GRANT CONNECT ON DATABASE epstein TO epstein_reader;
+GRANT USAGE ON SCHEMA public TO epstein_reader;
+GRANT SELECT ON documents, chunks TO epstein_reader;
 """
 
 
-def ensure_schema(conn: psycopg.Connection) -> None:
-    """Create tables and indexes if they don't exist."""
+def ensure_schema(conn: psycopg.Connection, reader_password: str | None = None) -> None:
+    """Create tables, indexes, and read-only user if they don't exist."""
     conn.execute(SCHEMA_SQL)
+    if reader_password:
+        # CREATE ROLE can't use query params, but password is operator-supplied (not user input)
+        conn.execute(
+            "SELECT 1 FROM pg_roles WHERE rolname = 'epstein_reader'"
+        )
+        if conn.fetchone() is None:
+            conn.execute(
+                psycopg.sql.SQL("CREATE ROLE epstein_reader LOGIN PASSWORD {}").format(
+                    psycopg.sql.Literal(reader_password)
+                )
+            )
+        conn.execute(READER_GRANTS_SQL)
     conn.commit()
     logger.info("Schema ready")
 
@@ -159,6 +179,7 @@ def main():
     parser.add_argument("--db-url", default=DEFAULT_DB_URL)
     parser.add_argument("--embed-server", default=EMBED_SERVER)
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
+    parser.add_argument("--reader-password", default=None, help="Password for read-only epstein_reader role")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -167,7 +188,7 @@ def main():
     logger.info(f"Embed server health: {embed_client.health()}")
 
     with psycopg.connect(args.db_url) as conn:
-        ensure_schema(conn)
+        ensure_schema(conn, reader_password=args.reader_password)
         results = []
         for ds in args.datasets:
             result = ingest_dataset(ds, conn, embed_client, args.data_dir)

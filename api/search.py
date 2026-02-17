@@ -6,7 +6,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from api.db import get_conn
+from api.db import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def set_model(model):
 
 
 class SearchRequest(BaseModel):
-    query: str
+    query: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=20, ge=1, le=100)
     dataset: int | None = None
 
@@ -53,7 +53,7 @@ def search(req: SearchRequest) -> SearchResponse:
     query_vec = embeddings[0].tolist()
     vec_str = "[" + ",".join(str(v) for v in query_vec) + "]"
 
-    conn = get_conn()
+    pool = get_pool()
 
     if req.dataset is not None:
         sql = """
@@ -77,9 +77,10 @@ def search(req: SearchRequest) -> SearchResponse:
         """
         params = (vec_str, vec_str, req.limit)
 
-    with conn.cursor() as cur:
-        cur.execute(sql, params)
-        rows = cur.fetchall()
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
     results = [
         ChunkResult(
