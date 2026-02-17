@@ -151,6 +151,41 @@ Parameters:
 - `offset` (optional, default 0): skip results for pagination
 - `dataset` (optional): filter to specific dataset number
 
+### POST /fuzzy_search
+
+Fuzzy trigram search — typo-tolerant matching for OCR errors and misspellings.
+
+```bash
+curl -X POST http://localhost:8000/fuzzy_search \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Maxwel", "limit": 10}'
+```
+
+Response:
+
+```json
+{
+  "query": "Maxwel",
+  "results": [
+    {
+      "efta_id": "EFTA00123456",
+      "dataset": 9,
+      "word_count": 450,
+      "similarity": 0.42,
+      "headline": "...traveled with <b>Maxwell</b> on a flight to..."
+    }
+  ]
+}
+```
+
+Parameters:
+- `query` (required): search text
+- `limit` (optional, default 20, max 100): number of results
+- `offset` (optional, default 0): skip results for pagination
+- `dataset` (optional): filter to specific dataset number
+- `exclude_exact` (optional, default false): exclude documents that keyword search already matches, showing only fuzzy-only results
+
 ### POST /similarity_search
 
 Find documents similar to a given chunk — uses the existing embedding without re-encoding.

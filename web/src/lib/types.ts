@@ -1,4 +1,4 @@
-export type SearchMode = "semantic" | "keyword";
+export type SearchMode = "semantic" | "keyword" | "fuzzy";
 
 export interface VectorResult {
   efta_id: string;
@@ -25,4 +25,17 @@ export interface TextResult {
 export interface TextSearchResponse {
   query: string;
   results: TextResult[];
+}
+
+export interface FuzzyResult {
+  efta_id: string;
+  dataset: number | null;
+  word_count: number;
+  similarity: number;
+  headline: string;
+}
+
+export interface FuzzySearchResponse {
+  query: string;
+  results: FuzzyResult[];
 }

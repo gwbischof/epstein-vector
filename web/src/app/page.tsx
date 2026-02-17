@@ -17,6 +17,7 @@ const EXAMPLE_QUERIES = [
   { label: "Maxwell OR Brunel", desc: "OR" },
   { label: "island -vacation", desc: "NOT" },
   { label: "payments to politicians", desc: "semantic" },
+  { label: "Maxwel", desc: "fuzzy" },
 ];
 
 export default function SearchPage() {
@@ -27,8 +28,11 @@ export default function SearchPage() {
     setMode,
     dataset,
     setDataset,
+    excludeExact,
+    setExcludeExact,
     vectorResults,
     textResults,
+    fuzzyResults,
     loading,
     loadingMore,
     error,
@@ -40,7 +44,7 @@ export default function SearchPage() {
     findSimilar,
   } = useSearch();
 
-  const hasResults = vectorResults.length > 0 || textResults.length > 0 || hasSearched;
+  const hasResults = vectorResults.length > 0 || textResults.length > 0 || fuzzyResults.length > 0 || hasSearched;
 
   return (
     <div className="relative min-h-screen noise">
@@ -132,6 +136,17 @@ export default function SearchPage() {
                 >
                   <SearchModeToggle mode={mode} onChange={setMode} />
                   <DatasetFilter dataset={dataset} onChange={setDataset} />
+                  {mode === "fuzzy" && (
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={excludeExact}
+                        onChange={(e) => setExcludeExact(e.target.checked)}
+                        className="accent-cyan-400 w-3.5 h-3.5"
+                      />
+                      Hide exact matches
+                    </label>
+                  )}
                 </motion.div>
 
                 {/* Example query chips */}
@@ -185,6 +200,17 @@ export default function SearchPage() {
                 <div className="flex items-center gap-3 mb-6">
                   <SearchModeToggle mode={mode} onChange={setMode} />
                   <DatasetFilter dataset={dataset} onChange={setDataset} />
+                  {mode === "fuzzy" && (
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={excludeExact}
+                        onChange={(e) => setExcludeExact(e.target.checked)}
+                        className="accent-cyan-400 w-3.5 h-3.5"
+                      />
+                      Hide exact matches
+                    </label>
+                  )}
                 </div>
 
                 {/* Similar-to indicator */}
@@ -205,6 +231,7 @@ export default function SearchPage() {
                   mode={mode}
                   vectorResults={vectorResults}
                   textResults={textResults}
+                  fuzzyResults={fuzzyResults}
                   loading={loading}
                   loadingMore={loadingMore}
                   error={error}

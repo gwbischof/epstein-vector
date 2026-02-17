@@ -1,8 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Brain, Type } from "lucide-react";
+import { Brain, Type, Zap } from "lucide-react";
 import type { SearchMode } from "@/lib/types";
+
+const MODES: { value: SearchMode; label: string; icon: typeof Brain }[] = [
+  { value: "semantic", label: "Semantic", icon: Brain },
+  { value: "keyword", label: "Keyword", icon: Type },
+  { value: "fuzzy", label: "Fuzzy", icon: Zap },
+];
 
 interface SearchModeToggleProps {
   mode: SearchMode;
@@ -10,6 +16,8 @@ interface SearchModeToggleProps {
 }
 
 export function SearchModeToggle({ mode, onChange }: SearchModeToggleProps) {
+  const activeIndex = MODES.findIndex((m) => m.value === mode);
+
   return (
     <div className="glass rounded-xl p-1 flex relative">
       {/* Sliding indicator */}
@@ -18,30 +26,26 @@ export function SearchModeToggle({ mode, onChange }: SearchModeToggleProps) {
         layout
         transition={{ type: "spring", stiffness: 400, damping: 35 }}
         style={{
-          left: mode === "semantic" ? "4px" : "50%",
-          width: "calc(50% - 4px)",
+          left: `calc(${activeIndex} * 33.333% + 4px)`,
+          width: "calc(33.333% - 4px)",
         }}
       />
 
-      <button
-        onClick={() => onChange("semantic")}
-        className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium uppercase tracking-wider transition-colors ${
-          mode === "semantic" ? "text-cyan-400" : "text-slate-500 hover:text-slate-300"
-        }`}
-      >
-        <Brain className="w-3.5 h-3.5" />
-        Semantic
-      </button>
-
-      <button
-        onClick={() => onChange("keyword")}
-        className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium uppercase tracking-wider transition-colors ${
-          mode === "keyword" ? "text-cyan-400" : "text-slate-500 hover:text-slate-300"
-        }`}
-      >
-        <Type className="w-3.5 h-3.5" />
-        Keyword
-      </button>
+      {MODES.map((m) => {
+        const Icon = m.icon;
+        return (
+          <button
+            key={m.value}
+            onClick={() => onChange(m.value)}
+            className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium uppercase tracking-wider transition-colors ${
+              mode === m.value ? "text-cyan-400" : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {m.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

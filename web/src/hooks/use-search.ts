@@ -1,17 +1,18 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { vectorSearch, textSearch, similarSearch } from "@/lib/api";
+import { vectorSearch, textSearch, fuzzySearch, similarSearch } from "@/lib/api";
 import type {
   SearchMode,
   VectorResult,
   TextResult,
+  FuzzyResult,
 } from "@/lib/types";
 
 const PAGE_SIZE = 20;
 
 type LastSearch =
-  | { kind: "query"; query: string; mode: SearchMode; dataset: number | null }
+  | { kind: "query"; query: string; mode: SearchMode; dataset: number | null; excludeExact: boolean }
   | { kind: "similar"; eftaId: string; chunkIndex: number; dataset: number | null };
 
 export function useSearch() {
@@ -20,6 +21,8 @@ export function useSearch() {
   const [dataset, setDataset] = useState<number | null>(null);
   const [vectorResults, setVectorResults] = useState<VectorResult[]>([]);
   const [textResults, setTextResults] = useState<TextResult[]>([]);
+  const [fuzzyResults, setFuzzyResults] = useState<FuzzyResult[]>([]);
+  const [excludeExact, setExcludeExact] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,7 @@ export function useSearch() {
   const lastSearchRef = useRef<LastSearch | null>(null);
 
   const search = useCallback(
-    async (q: string, m: SearchMode, d: number | null) => {
+    async (q: string, m: SearchMode, d: number | null, exExact: boolean = false) => {
       const apiKey =
         typeof window !== "undefined"
           ? localStorage.getItem("epstein-api-key") ?? ""
@@ -51,18 +54,26 @@ export function useSearch() {
       setHasSearched(true);
       setHasMore(true);
       setSimilarTo(null);
-      lastSearchRef.current = { kind: "query", query: q, mode: m, dataset: d };
+      lastSearchRef.current = { kind: "query", query: q, mode: m, dataset: d, excludeExact: exExact };
 
       try {
         if (m === "semantic") {
           const res = await vectorSearch(q, apiKey, PAGE_SIZE, 0, d, controller.signal);
           setVectorResults(res.results);
           setTextResults([]);
+          setFuzzyResults([]);
+          setHasMore(res.results.length >= PAGE_SIZE);
+        } else if (m === "fuzzy") {
+          const res = await fuzzySearch(q, apiKey, PAGE_SIZE, 0, d, exExact, controller.signal);
+          setFuzzyResults(res.results);
+          setVectorResults([]);
+          setTextResults([]);
           setHasMore(res.results.length >= PAGE_SIZE);
         } else {
           const res = await textSearch(q, apiKey, PAGE_SIZE, 0, d, controller.signal);
           setTextResults(res.results);
           setVectorResults([]);
+          setFuzzyResults([]);
           setHasMore(res.results.length >= PAGE_SIZE);
         }
       } catch (err: unknown) {
@@ -103,6 +114,7 @@ export function useSearch() {
         const res = await similarSearch(eftaId, chunkIndex, apiKey, PAGE_SIZE, 0, dataset, controller.signal);
         setVectorResults(res.results);
         setTextResults([]);
+        setFuzzyResults([]);
         setHasMore(res.results.length >= PAGE_SIZE);
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -138,6 +150,11 @@ export function useSearch() {
         const res = await vectorSearch(last.query, apiKey, PAGE_SIZE, offset, last.dataset, controller.signal);
         setVectorResults((prev) => [...prev, ...res.results]);
         setHasMore(res.results.length >= PAGE_SIZE);
+      } else if (last.mode === "fuzzy") {
+        const offset = fuzzyResults.length;
+        const res = await fuzzySearch(last.query, apiKey, PAGE_SIZE, offset, last.dataset, last.excludeExact, controller.signal);
+        setFuzzyResults((prev) => [...prev, ...res.results]);
+        setHasMore(res.results.length >= PAGE_SIZE);
       } else {
         const offset = textResults.length;
         const res = await textSearch(last.query, apiKey, PAGE_SIZE, offset, last.dataset, controller.signal);
@@ -149,11 +166,11 @@ export function useSearch() {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, vectorResults.length, textResults.length]);
+  }, [loadingMore, hasMore, vectorResults.length, textResults.length, fuzzyResults.length]);
 
   const executeSearch = useCallback(() => {
-    search(query, mode, dataset);
-  }, [search, query, mode, dataset]);
+    search(query, mode, dataset, excludeExact);
+  }, [search, query, mode, dataset, excludeExact]);
 
   return {
     query,
@@ -162,8 +179,11 @@ export function useSearch() {
     setMode,
     dataset,
     setDataset,
+    excludeExact,
+    setExcludeExact,
     vectorResults,
     textResults,
+    fuzzyResults,
     loading,
     loadingMore,
     error,
