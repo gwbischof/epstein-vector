@@ -10,6 +10,7 @@ import { FuzzyResultCard } from "./fuzzy-result-card";
 
 interface SearchResultsProps {
   mode: SearchMode;
+  query: string;
   vectorResults: VectorResult[];
   textResults: TextResult[];
   fuzzyResults: FuzzyResult[];
@@ -24,6 +25,7 @@ interface SearchResultsProps {
 
 export function SearchResults({
   mode,
+  query,
   vectorResults,
   textResults,
   fuzzyResults,
@@ -126,11 +128,11 @@ export function SearchResults({
       >
         {mode === "semantic"
           ? vectorResults.map((r, i) => (
-              <VectorResultCard key={`${r.efta_id}-${r.chunk_index}`} result={r} index={i} onFindSimilar={onFindSimilar} />
+              <VectorResultCard key={`${r.efta_id}-${r.chunk_index}`} result={r} index={i} query={query} onFindSimilar={onFindSimilar} />
             ))
           : mode === "fuzzy"
           ? fuzzyResults.map((r, i) => (
-              <FuzzyResultCard key={r.efta_id} result={r} index={i} onFindSimilar={onFindSimilar} />
+              <FuzzyResultCard key={r.efta_id} result={r} index={i} query={query} onFindSimilar={onFindSimilar} />
             ))
           : textResults.map((r, i) => (
               <TextResultCard key={r.efta_id} result={r} index={i} onFindSimilar={onFindSimilar} />

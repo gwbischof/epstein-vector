@@ -214,6 +214,7 @@ export default function SearchPage() {
                 {/* Results */}
                 <SearchResults
                   mode={mode}
+                  query={query}
                   vectorResults={vectorResults}
                   textResults={textResults}
                   fuzzyResults={fuzzyResults}

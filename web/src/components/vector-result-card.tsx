@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { FileText, ChevronDown, ChevronUp, ExternalLink, Layers, Sparkles } from "lucide-react";
 import type { VectorResult } from "@/lib/types";
-import { eftaUrl } from "@/lib/utils";
+import { eftaUrl, highlightExactTerms } from "@/lib/utils";
 
 function scoreColor(score: number): string {
   if (score >= 0.5) return "bg-emerald-500";
@@ -21,12 +21,18 @@ function scoreLabel(score: number): string {
 interface VectorResultCardProps {
   result: VectorResult;
   index: number;
+  query: string;
   onFindSimilar?: (eftaId: string, chunkIndex: number) => void;
 }
 
-export function VectorResultCard({ result, index, onFindSimilar }: VectorResultCardProps) {
+export function VectorResultCard({ result, index, query, onFindSimilar }: VectorResultCardProps) {
   const [expanded, setExpanded] = useState(false);
   const preview = result.text.length > 300 && !expanded ? result.text.slice(0, 300) + "..." : result.text;
+
+  const segments = useMemo(
+    () => highlightExactTerms(query, preview),
+    [query, preview],
+  );
 
   return (
     <motion.div
@@ -81,10 +87,18 @@ export function VectorResultCard({ result, index, onFindSimilar }: VectorResultC
         </div>
       </div>
 
-      {/* Text preview */}
+      {/* Text preview with exact query terms highlighted */}
       <div className="relative">
         <p className="text-sm text-slate-300/90 leading-relaxed whitespace-pre-wrap break-words">
-          {preview}
+          {segments.map((seg, i) =>
+            seg.match ? (
+              <span key={i} className="text-cyan-300 bg-cyan-500/15 rounded px-0.5">
+                {seg.text}
+              </span>
+            ) : (
+              <span key={i}>{seg.text}</span>
+            ),
+          )}
         </p>
 
         {result.text.length > 300 && (

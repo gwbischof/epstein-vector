@@ -1,13 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { FileText, ExternalLink, Layers, Sparkles, Percent } from "lucide-react";
 import type { FuzzyResult } from "@/lib/types";
-import { eftaUrl } from "@/lib/utils";
+import { eftaUrl, highlightFuzzyMatch } from "@/lib/utils";
 
 interface FuzzyResultCardProps {
   result: FuzzyResult;
   index: number;
+  query: string;
   onFindSimilar?: (eftaId: string, chunkIndex: number) => void;
 }
 
@@ -17,8 +19,13 @@ function similarityColor(sim: number): string {
   return "bg-amber-400";
 }
 
-export function FuzzyResultCard({ result, index, onFindSimilar }: FuzzyResultCardProps) {
+export function FuzzyResultCard({ result, index, query, onFindSimilar }: FuzzyResultCardProps) {
   const pct = Math.round(result.similarity * 100);
+
+  const highlight = useMemo(
+    () => highlightFuzzyMatch(query, result.text),
+    [query, result.text],
+  );
 
   return (
     <motion.div
@@ -69,10 +76,18 @@ export function FuzzyResultCard({ result, index, onFindSimilar }: FuzzyResultCar
         </span>
       </div>
 
-      {/* Text snippet */}
-      <p className="text-sm text-slate-300/90 leading-relaxed line-clamp-4">
-        {result.text}
-      </p>
+      {/* Text snippet with fuzzy match highlighted */}
+      {highlight ? (
+        <p className="text-sm text-slate-300/90 leading-relaxed">
+          <span className="text-slate-400/70">{highlight.before} </span>
+          <span className="text-cyan-300 bg-cyan-500/15 rounded px-0.5">{highlight.match}</span>
+          <span className="text-slate-400/70"> {highlight.after}</span>
+        </p>
+      ) : (
+        <p className="text-sm text-slate-300/90 leading-relaxed line-clamp-4">
+          {result.text}
+        </p>
+      )}
 
       {/* Footer actions */}
       <div className="mt-3 pt-3 border-t border-slate-700/30 flex items-center gap-4">
