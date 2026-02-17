@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# Create non-root user
+RUN useradd --create-home appuser
+
 WORKDIR /app
 
 # Install system deps + uv
@@ -15,8 +18,8 @@ RUN uv sync --extra api --no-dev
 # Copy app code
 COPY api/ api/
 
-# Run as non-root user
-RUN useradd --create-home appuser
+# Hand ownership to non-root user
+RUN chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
