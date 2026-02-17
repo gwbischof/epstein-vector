@@ -126,7 +126,7 @@ jobs:
               -e DATABASE_URL="postgresql://epstein_reader:${{ secrets.READER_PASSWORD }}@$PG_CONTAINER:5432/epstein" \
               -e API_KEY="${{ secrets.API_KEY }}" \
               -l "traefik.enable=true" \
-              -l "traefik.http.routers.epstein-vector-api.rule=Host(\`$DOMAIN\`) && (Path(\`/vector_search\`) || Path(\`/text_search\`) || Path(\`/similarity_search\`) || Path(\`/health\`))" \
+              -l "traefik.http.routers.epstein-vector-api.rule=Host(\`$DOMAIN\`) && (Path(\`/vector_search\`) || Path(\`/text_search\`) || Path(\`/fuzzy_search\`) || Path(\`/similarity_search\`) || Path(\`/health\`))" \
               -l "traefik.http.routers.epstein-vector-api.priority=100" \
               -l "traefik.http.routers.epstein-vector-api.tls=true" \
               -l "traefik.http.routers.epstein-vector-api.tls.certresolver=myresolver" \
