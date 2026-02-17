@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { FileText, ExternalLink, BookOpen, Sparkles, Percent } from "lucide-react";
+import { FileText, ExternalLink, Layers, Sparkles, Percent } from "lucide-react";
 import type { FuzzyResult } from "@/lib/types";
 import { eftaUrl } from "@/lib/utils";
 
@@ -51,7 +51,7 @@ export function FuzzyResultCard({ result, index, onFindSimilar }: FuzzyResultCar
         </div>
       </div>
 
-      {/* Meta row: similarity bar + word count */}
+      {/* Meta row: similarity bar + chunk info */}
       <div className="flex items-center gap-4 mb-3 text-[11px] text-slate-500">
         <span className="flex items-center gap-1.5">
           <Percent className="w-3 h-3" />
@@ -64,16 +64,15 @@ export function FuzzyResultCard({ result, index, onFindSimilar }: FuzzyResultCar
           </div>
         </span>
         <span className="flex items-center gap-1">
-          <BookOpen className="w-3 h-3" />
-          {result.word_count.toLocaleString()} words
+          <Layers className="w-3 h-3" />
+          Chunk {result.chunk_index + 1}/{result.total_chunks}
         </span>
       </div>
 
-      {/* Headline with bold highlights rendered */}
-      <div
-        className="text-sm text-slate-300/90 leading-relaxed [&_b]:text-cyan-400 [&_b]:font-semibold"
-        dangerouslySetInnerHTML={{ __html: result.headline }}
-      />
+      {/* Text snippet */}
+      <p className="text-sm text-slate-300/90 leading-relaxed line-clamp-4">
+        {result.text}
+      </p>
 
       {/* Footer actions */}
       <div className="mt-3 pt-3 border-t border-slate-700/30 flex items-center gap-4">
@@ -88,7 +87,7 @@ export function FuzzyResultCard({ result, index, onFindSimilar }: FuzzyResultCar
         </a>
         {onFindSimilar && (
           <button
-            onClick={() => onFindSimilar(result.efta_id, 0)}
+            onClick={() => onFindSimilar(result.efta_id, result.chunk_index)}
             className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-400 transition-colors"
           >
             <Sparkles className="w-3 h-3" />

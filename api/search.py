@@ -236,9 +236,10 @@ class FuzzySearchRequest(BaseModel):
 class FuzzyResult(BaseModel):
     efta_id: str
     dataset: int | None = None
-    word_count: int
+    chunk_index: int
+    total_chunks: int
+    text: str
     similarity: float
-    headline: str
 
 
 class FuzzySearchResponse(BaseModel):
@@ -254,8 +255,8 @@ def ensure_pg_trgm():
             with conn.cursor() as cur:
                 cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
                 cur.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_documents_trgm "
-                    "ON documents USING gin (text gin_trgm_ops)"
+                    "CREATE INDEX IF NOT EXISTS idx_chunks_trgm "
+                    "ON chunks USING gin (text gin_trgm_ops)"
                 )
             conn.commit()
     except Exception as e:
@@ -263,44 +264,38 @@ def ensure_pg_trgm():
 
 
 def fuzzy_search(req: FuzzySearchRequest) -> FuzzySearchResponse:
-    """Fuzzy trigram search over documents — typo-tolerant matching."""
+    """Fuzzy trigram search over chunks — typo-tolerant matching."""
     pool = get_pool()
-
-    # Build a tsquery for headline highlighting from the raw query words
-    words = [w for w in re.sub(r"[^\w\s]", "", req.query).split() if w]
-    tsquery_str = " | ".join(f"'{w}'" for w in words) if words else "''"
 
     # Optional: exclude docs that keyword search already finds
     exclude_clause = ""
     exclude_params: tuple = ()
     if req.exclude_exact:
-        exclude_clause = " AND NOT tsv @@ websearch_to_tsquery('english', %s)"
+        exclude_clause = " AND NOT d.tsv @@ websearch_to_tsquery('english', %s)"
         exclude_params = (req.query,)
 
     if req.dataset is not None:
         sql = f"""
-            SELECT efta_id, dataset, word_count,
-                   similarity(text, %s) AS sim,
-                   ts_headline('simple', text, to_tsquery('simple', %s),
-                               'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
-            FROM documents
-            WHERE text %% %s AND dataset = %s{exclude_clause}
+            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
+                   word_similarity(%s, c.text) AS sim
+            FROM chunks c
+            JOIN documents d ON d.efta_id = c.efta_id
+            WHERE %s <%% c.text AND d.dataset = %s{exclude_clause}
             ORDER BY sim DESC
             LIMIT %s OFFSET %s
         """
-        params = (req.query, tsquery_str, req.query, req.dataset) + exclude_params + (req.limit, req.offset)
+        params = (req.query, req.query, req.dataset) + exclude_params + (req.limit, req.offset)
     else:
         sql = f"""
-            SELECT efta_id, dataset, word_count,
-                   similarity(text, %s) AS sim,
-                   ts_headline('simple', text, to_tsquery('simple', %s),
-                               'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
-            FROM documents
-            WHERE text %% %s{exclude_clause}
+            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
+                   word_similarity(%s, c.text) AS sim
+            FROM chunks c
+            JOIN documents d ON d.efta_id = c.efta_id
+            WHERE %s <%% c.text{exclude_clause}
             ORDER BY sim DESC
             LIMIT %s OFFSET %s
         """
-        params = (req.query, tsquery_str, req.query) + exclude_params + (req.limit, req.offset)
+        params = (req.query, req.query) + exclude_params + (req.limit, req.offset)
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -311,9 +306,10 @@ def fuzzy_search(req: FuzzySearchRequest) -> FuzzySearchResponse:
         FuzzyResult(
             efta_id=row["efta_id"],
             dataset=row["dataset"],
-            word_count=row["word_count"],
+            chunk_index=row["chunk_index"],
+            total_chunks=row["total_chunks"],
+            text=row["text"],
             similarity=float(row["sim"]),
-            headline=row["headline"],
         )
         for row in rows
     ]

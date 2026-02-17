@@ -55,6 +55,8 @@ CREATE INDEX IF NOT EXISTS chunks_efta_idx ON chunks (efta_id);
 
 CREATE INDEX IF NOT EXISTS documents_tsv_idx ON documents USING gin (tsv);
 
+CREATE INDEX IF NOT EXISTS idx_chunks_trgm ON chunks USING gin (text gin_trgm_ops);
+
 """
 
 READER_GRANTS_SQL = """

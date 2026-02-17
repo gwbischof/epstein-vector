@@ -30,9 +30,10 @@ export interface TextSearchResponse {
 export interface FuzzyResult {
   efta_id: string;
   dataset: number | null;
-  word_count: number;
+  chunk_index: number;
+  total_chunks: number;
+  text: string;
   similarity: number;
-  headline: string;
 }
 
 export interface FuzzySearchResponse {

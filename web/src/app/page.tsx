@@ -8,6 +8,7 @@ import { SearchBar } from "@/components/search-bar";
 import { SearchModeToggle } from "@/components/search-mode-toggle";
 import { DatasetFilter } from "@/components/dataset-filter";
 import { SearchResults } from "@/components/search-results";
+import { ExcludeExactToggle } from "@/components/exclude-exact-toggle";
 import { useSearch } from "@/hooks/use-search";
 
 const EXAMPLE_QUERIES = [
@@ -137,15 +138,7 @@ export default function SearchPage() {
                   <SearchModeToggle mode={mode} onChange={setMode} />
                   <DatasetFilter dataset={dataset} onChange={setDataset} />
                   {mode === "fuzzy" && (
-                    <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={excludeExact}
-                        onChange={(e) => setExcludeExact(e.target.checked)}
-                        className="accent-cyan-400 w-3.5 h-3.5"
-                      />
-                      Hide exact matches
-                    </label>
+                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
                   )}
                 </motion.div>
 
@@ -201,15 +194,7 @@ export default function SearchPage() {
                   <SearchModeToggle mode={mode} onChange={setMode} />
                   <DatasetFilter dataset={dataset} onChange={setDataset} />
                   {mode === "fuzzy" && (
-                    <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={excludeExact}
-                        onChange={(e) => setExcludeExact(e.target.checked)}
-                        className="accent-cyan-400 w-3.5 h-3.5"
-                      />
-                      Hide exact matches
-                    </label>
+                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
                   )}
                 </div>
 

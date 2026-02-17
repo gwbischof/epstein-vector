@@ -171,9 +171,10 @@ Response:
     {
       "efta_id": "EFTA00123456",
       "dataset": 9,
-      "word_count": 450,
-      "similarity": 0.42,
-      "headline": "...traveled with <b>Maxwell</b> on a flight to..."
+      "chunk_index": 2,
+      "total_chunks": 5,
+      "text": "[EFTA00123456 | Dataset 9] ...traveled with Maxwell on a flight to...",
+      "similarity": 0.72
     }
   ]
 }
