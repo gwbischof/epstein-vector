@@ -10,3 +10,9 @@ build/
 *.pth
 # Downloaded model weights (not code dirs like server/models/)
 /models/
+
+# Node / Next.js
+node_modules/
+.next/
+web/.next/
+web/node_modules/

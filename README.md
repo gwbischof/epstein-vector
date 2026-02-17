@@ -72,10 +72,12 @@ Set `API_KEY` env var to require authentication. If unset, all endpoints are ope
 
 ## API Reference
 
-### POST /search
+### POST /vector_search
+
+Semantic search — finds documents by meaning.
 
 ```bash
-curl -X POST http://localhost:8000/search \
+curl -X POST http://localhost:8000/vector_search \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"query": "flight logs", "limit": 10, "dataset": 9}'
@@ -101,6 +103,39 @@ Response:
 
 Parameters:
 - `query` (required): search text
+- `limit` (optional, default 20, max 100): number of results
+- `dataset` (optional): filter to specific dataset number
+
+### POST /text_search
+
+Full-text keyword search — finds exact word matches.
+
+```bash
+curl -X POST http://localhost:8000/text_search \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Maxwell flight", "limit": 10, "dataset": 9}'
+```
+
+Response:
+
+```json
+{
+  "query": "Maxwell flight",
+  "results": [
+    {
+      "efta_id": "EFTA00123456",
+      "dataset": 9,
+      "word_count": 450,
+      "rank": 0.075,
+      "headline": "...traveled with <b>Maxwell</b> on a <b>flight</b> to..."
+    }
+  ]
+}
+```
+
+Parameters:
+- `query` (required): search text (words are ANDed together)
 - `limit` (optional, default 20, max 100): number of results
 - `dataset` (optional): filter to specific dataset number
 

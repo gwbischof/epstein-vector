@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS documents (
     url TEXT,
     pages INT,
     word_count INT,
-    text TEXT
+    text TEXT,
+    tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(text, ''))) STORED
 );
 
 CREATE TABLE IF NOT EXISTS chunks (
@@ -51,6 +52,8 @@ CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks
     USING hnsw (embedding halfvec_cosine_ops);
 
 CREATE INDEX IF NOT EXISTS chunks_efta_idx ON chunks (efta_id);
+
+CREATE INDEX IF NOT EXISTS documents_tsv_idx ON documents USING gin (tsv);
 
 """
 

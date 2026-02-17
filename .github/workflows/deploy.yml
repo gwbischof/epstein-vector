@@ -117,7 +117,7 @@ jobs:
               docker rm "$CONTAINER_NAME"
             fi
 
-            # Run the new container with Traefik labels
+            # Run the new container with Traefik labels (path-based routing for API endpoints)
             echo "Starting new container..."
             docker run -d \
               --name "$CONTAINER_NAME" \
@@ -126,10 +126,11 @@ jobs:
               -e DATABASE_URL="postgresql://epstein_reader:${{ secrets.READER_PASSWORD }}@$PG_CONTAINER:5432/epstein" \
               -e API_KEY="${{ secrets.API_KEY }}" \
               -l "traefik.enable=true" \
-              -l "traefik.http.routers.epstein-vector.rule=Host(\`$DOMAIN\`)" \
-              -l "traefik.http.routers.epstein-vector.tls=true" \
-              -l "traefik.http.routers.epstein-vector.tls.certresolver=myresolver" \
-              -l "traefik.http.services.epstein-vector.loadbalancer.server.port=8000" \
+              -l "traefik.http.routers.epstein-vector-api.rule=Host(\`$DOMAIN\`) && (Path(\`/vector_search\`) || Path(\`/text_search\`) || Path(\`/health\`))" \
+              -l "traefik.http.routers.epstein-vector-api.priority=100" \
+              -l "traefik.http.routers.epstein-vector-api.tls=true" \
+              -l "traefik.http.routers.epstein-vector-api.tls.certresolver=myresolver" \
+              -l "traefik.http.services.epstein-vector-api.loadbalancer.server.port=8000" \
               "$IMAGE_NAME"
 
             # Wait for container to be ready

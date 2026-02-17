@@ -1,4 +1,4 @@
-"""Search endpoint: embed query on CPU, search pgvector."""
+"""Search endpoints: vector (semantic) and full-text keyword search."""
 
 from __future__ import annotations
 
@@ -95,3 +95,71 @@ def search(req: SearchRequest) -> SearchResponse:
     ]
 
     return SearchResponse(query=req.query, results=results)
+
+
+class TextSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=2000)
+    limit: int = Field(default=20, ge=1, le=100)
+    dataset: int | None = None
+
+
+class TextResult(BaseModel):
+    efta_id: str
+    dataset: int | None = None
+    word_count: int
+    rank: float
+    headline: str
+
+
+class TextSearchResponse(BaseModel):
+    query: str
+    results: list[TextResult]
+
+
+def text_search(req: TextSearchRequest) -> TextSearchResponse:
+    """Full-text search over documents."""
+    pool = get_pool()
+
+    # Convert query to tsquery — plainto_tsquery handles plain text safely
+    if req.dataset is not None:
+        sql = """
+            SELECT efta_id, dataset, word_count,
+                   ts_rank(tsv, plainto_tsquery('english', %s)) AS rank,
+                   ts_headline('english', text, plainto_tsquery('english', %s),
+                               'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
+            FROM documents
+            WHERE tsv @@ plainto_tsquery('english', %s) AND dataset = %s
+            ORDER BY rank DESC
+            LIMIT %s
+        """
+        params = (req.query, req.query, req.query, req.dataset, req.limit)
+    else:
+        sql = """
+            SELECT efta_id, dataset, word_count,
+                   ts_rank(tsv, plainto_tsquery('english', %s)) AS rank,
+                   ts_headline('english', text, plainto_tsquery('english', %s),
+                               'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
+            FROM documents
+            WHERE tsv @@ plainto_tsquery('english', %s)
+            ORDER BY rank DESC
+            LIMIT %s
+        """
+        params = (req.query, req.query, req.query, req.limit)
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    results = [
+        TextResult(
+            efta_id=row["efta_id"],
+            dataset=row["dataset"],
+            word_count=row["word_count"],
+            rank=float(row["rank"]),
+            headline=row["headline"],
+        )
+        for row in rows
+    ]
+
+    return TextSearchResponse(query=req.query, results=results)

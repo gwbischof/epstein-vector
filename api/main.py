@@ -54,6 +54,11 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/search", dependencies=[Depends(verify_api_key)])
-def search_endpoint(req: search_module.SearchRequest) -> search_module.SearchResponse:
+@app.post("/vector_search", dependencies=[Depends(verify_api_key)])
+def vector_search_endpoint(req: search_module.SearchRequest) -> search_module.SearchResponse:
     return search_module.search(req)
+
+
+@app.post("/text_search", dependencies=[Depends(verify_api_key)])
+def text_search_endpoint(req: search_module.TextSearchRequest) -> search_module.TextSearchResponse:
+    return search_module.text_search(req)
