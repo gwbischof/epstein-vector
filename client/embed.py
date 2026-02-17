@@ -52,6 +52,6 @@ class EmbeddingClient:
         return all_embeddings
 
     def health(self) -> dict:
-        resp = self.session.get(f"{self.server_url}/health", timeout=10)
+        resp = self.session.post(f"{self.server_url}/health", timeout=10)
         resp.raise_for_status()
         return resp.json()

@@ -223,3 +223,74 @@ def text_search(req: TextSearchRequest) -> TextSearchResponse:
     ]
 
     return TextSearchResponse(query=req.query, results=results)
+
+
+class SimilarRequest(BaseModel):
+    efta_id: str = Field(..., min_length=1)
+    chunk_index: int = Field(default=0, ge=0)
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+    dataset: int | None = None
+
+
+def similar(req: SimilarRequest) -> SearchResponse:
+    """Find chunks similar to an existing chunk by reusing its embedding."""
+    pool = get_pool()
+
+    # Fetch the source chunk's embedding
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT embedding FROM chunks WHERE efta_id = %s AND chunk_index = %s",
+                (req.efta_id, req.chunk_index),
+            )
+            row = cur.fetchone()
+
+    if row is None:
+        return SearchResponse(query=f"Similar to {req.efta_id}", results=[])
+
+    vec_str = str(row["embedding"])
+
+    # Find nearest neighbors, excluding the source chunk itself
+    if req.dataset is not None:
+        sql = """
+            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
+                   1 - (c.embedding <=> %s::halfvec) AS score
+            FROM chunks c
+            JOIN documents d ON d.efta_id = c.efta_id
+            WHERE d.dataset = %s
+              AND NOT (c.efta_id = %s AND c.chunk_index = %s)
+            ORDER BY c.embedding <=> %s::halfvec
+            LIMIT %s OFFSET %s
+        """
+        params = (vec_str, req.dataset, req.efta_id, req.chunk_index, vec_str, req.limit, req.offset)
+    else:
+        sql = """
+            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
+                   1 - (c.embedding <=> %s::halfvec) AS score
+            FROM chunks c
+            JOIN documents d ON d.efta_id = c.efta_id
+            WHERE NOT (c.efta_id = %s AND c.chunk_index = %s)
+            ORDER BY c.embedding <=> %s::halfvec
+            LIMIT %s OFFSET %s
+        """
+        params = (vec_str, req.efta_id, req.chunk_index, vec_str, req.limit, req.offset)
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    results = [
+        ChunkResult(
+            efta_id=r["efta_id"],
+            dataset=r["dataset"],
+            chunk_index=r["chunk_index"],
+            total_chunks=r["total_chunks"],
+            text=r["text"],
+            score=float(r["score"]),
+        )
+        for r in rows
+    ]
+
+    return SearchResponse(query=f"Similar to {req.efta_id}", results=results)

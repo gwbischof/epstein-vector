@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { vectorSearch, textSearch } from "@/lib/api";
+import { vectorSearch, textSearch, similarSearch } from "@/lib/api";
 import type {
   SearchMode,
   VectorResult,
@@ -9,6 +9,10 @@ import type {
 } from "@/lib/types";
 
 const PAGE_SIZE = 20;
+
+type LastSearch =
+  | { kind: "query"; query: string; mode: SearchMode; dataset: number | null }
+  | { kind: "similar"; eftaId: string; chunkIndex: number; dataset: number | null };
 
 export function useSearch() {
   const [query, setQuery] = useState("");
@@ -21,9 +25,9 @@ export function useSearch() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [similarTo, setSimilarTo] = useState<string | null>(null); // display label
   const abortRef = useRef<AbortController | null>(null);
-  // Track what query/mode/dataset produced the current results for loadMore
-  const lastSearchRef = useRef<{ query: string; mode: SearchMode; dataset: number | null } | null>(null);
+  const lastSearchRef = useRef<LastSearch | null>(null);
 
   const search = useCallback(
     async (q: string, m: SearchMode, d: number | null) => {
@@ -46,7 +50,8 @@ export function useSearch() {
       setError(null);
       setHasSearched(true);
       setHasMore(true);
-      lastSearchRef.current = { query: q, mode: m, dataset: d };
+      setSimilarTo(null);
+      lastSearchRef.current = { kind: "query", query: q, mode: m, dataset: d };
 
       try {
         if (m === "semantic") {
@@ -70,6 +75,45 @@ export function useSearch() {
     [],
   );
 
+  const findSimilar = useCallback(
+    async (eftaId: string, chunkIndex: number) => {
+      const apiKey =
+        typeof window !== "undefined"
+          ? localStorage.getItem("epstein-api-key") ?? ""
+          : "";
+      if (!apiKey) {
+        setError("Please enter an API key first");
+        return;
+      }
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setLoading(true);
+      setError(null);
+      setHasSearched(true);
+      setHasMore(true);
+      setMode("semantic");
+      setQuery("");
+      setSimilarTo(eftaId);
+      lastSearchRef.current = { kind: "similar", eftaId, chunkIndex, dataset };
+
+      try {
+        const res = await similarSearch(eftaId, chunkIndex, apiKey, PAGE_SIZE, 0, dataset, controller.signal);
+        setVectorResults(res.results);
+        setTextResults([]);
+        setHasMore(res.results.length >= PAGE_SIZE);
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Search failed");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dataset],
+  );
+
   const loadMore = useCallback(async () => {
     const last = lastSearchRef.current;
     if (!last || loadingMore || !hasMore) return;
@@ -84,7 +128,12 @@ export function useSearch() {
     setLoadingMore(true);
 
     try {
-      if (last.mode === "semantic") {
+      if (last.kind === "similar") {
+        const offset = vectorResults.length;
+        const res = await similarSearch(last.eftaId, last.chunkIndex, apiKey, PAGE_SIZE, offset, last.dataset, controller.signal);
+        setVectorResults((prev) => [...prev, ...res.results]);
+        setHasMore(res.results.length >= PAGE_SIZE);
+      } else if (last.mode === "semantic") {
         const offset = vectorResults.length;
         const res = await vectorSearch(last.query, apiKey, PAGE_SIZE, offset, last.dataset, controller.signal);
         setVectorResults((prev) => [...prev, ...res.results]);
@@ -97,7 +146,6 @@ export function useSearch() {
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      // Silently fail on load-more errors — user can scroll again
     } finally {
       setLoadingMore(false);
     }
@@ -121,7 +169,9 @@ export function useSearch() {
     error,
     hasSearched,
     hasMore,
+    similarTo,
     executeSearch,
     loadMore,
+    findSimilar,
   };
 }

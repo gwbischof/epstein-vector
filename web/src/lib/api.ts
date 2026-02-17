@@ -62,3 +62,33 @@ export async function textSearch(
 
   return res.json();
 }
+
+export async function similarSearch(
+  eftaId: string,
+  chunkIndex: number,
+  apiKey: string,
+  limit: number = 20,
+  offset: number = 0,
+  dataset?: number | null,
+  signal?: AbortSignal,
+): Promise<VectorSearchResponse> {
+  const body: Record<string, unknown> = { efta_id: eftaId, chunk_index: chunkIndex, limit, offset };
+  if (dataset != null) body.dataset = dataset;
+
+  const res = await fetch(`${BASE_URL}/similarity_search`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey,
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Invalid API key");
+    throw new Error(`Similar search failed (${res.status})`);
+  }
+
+  return res.json();
+}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, ChevronDown, ChevronUp, ExternalLink, Layers } from "lucide-react";
+import { FileText, ChevronDown, ChevronUp, ExternalLink, Layers, Sparkles } from "lucide-react";
 import type { VectorResult } from "@/lib/types";
 import { eftaUrl } from "@/lib/utils";
 
@@ -21,9 +21,10 @@ function scoreLabel(score: number): string {
 interface VectorResultCardProps {
   result: VectorResult;
   index: number;
+  onFindSimilar?: (eftaId: string, chunkIndex: number) => void;
 }
 
-export function VectorResultCard({ result, index }: VectorResultCardProps) {
+export function VectorResultCard({ result, index, onFindSimilar }: VectorResultCardProps) {
   const [expanded, setExpanded] = useState(false);
   const preview = result.text.length > 300 && !expanded ? result.text.slice(0, 300) + "..." : result.text;
 
@@ -104,8 +105,8 @@ export function VectorResultCard({ result, index }: VectorResultCardProps) {
         )}
       </div>
 
-      {/* View on DOJ link */}
-      <div className="mt-3 pt-3 border-t border-slate-700/30">
+      {/* Footer actions */}
+      <div className="mt-3 pt-3 border-t border-slate-700/30 flex items-center gap-4">
         <a
           href={eftaUrl(result.efta_id, result.dataset)}
           target="_blank"
@@ -115,6 +116,15 @@ export function VectorResultCard({ result, index }: VectorResultCardProps) {
           <ExternalLink className="w-3 h-3" />
           View on DOJ EFTA
         </a>
+        {onFindSimilar && (
+          <button
+            onClick={() => onFindSimilar(result.efta_id, result.chunk_index)}
+            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-400 transition-colors"
+          >
+            <Sparkles className="w-3 h-3" />
+            More like this
+          </button>
+        )}
       </div>
     </motion.div>
   );

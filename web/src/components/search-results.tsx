@@ -17,6 +17,7 @@ interface SearchResultsProps {
   hasSearched: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
+  onFindSimilar: (eftaId: string, chunkIndex: number) => void;
 }
 
 export function SearchResults({
@@ -29,6 +30,7 @@ export function SearchResults({
   hasSearched,
   hasMore,
   onLoadMore,
+  onFindSimilar,
 }: SearchResultsProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -113,7 +115,7 @@ export function SearchResults({
       >
         {mode === "semantic"
           ? vectorResults.map((r, i) => (
-              <VectorResultCard key={`${r.efta_id}-${r.chunk_index}`} result={r} index={i} />
+              <VectorResultCard key={`${r.efta_id}-${r.chunk_index}`} result={r} index={i} onFindSimilar={onFindSimilar} />
             ))
           : textResults.map((r, i) => (
               <TextResultCard key={r.efta_id} result={r} index={i} />

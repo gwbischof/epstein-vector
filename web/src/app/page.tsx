@@ -34,8 +34,10 @@ export default function SearchPage() {
     error,
     hasSearched,
     hasMore,
+    similarTo,
     executeSearch,
     loadMore,
+    findSimilar,
   } = useSearch();
 
   const hasResults = vectorResults.length > 0 || textResults.length > 0 || hasSearched;
@@ -185,6 +187,19 @@ export default function SearchPage() {
                   <DatasetFilter dataset={dataset} onChange={setDataset} />
                 </div>
 
+                {/* Similar-to indicator */}
+                {similarTo && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass rounded-lg px-4 py-2 mb-4 flex items-center gap-2 text-xs"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                    <span className="text-slate-400">Showing documents similar to</span>
+                    <span className="font-mono text-cyan-400">{similarTo}</span>
+                  </motion.div>
+                )}
+
                 {/* Results */}
                 <SearchResults
                   mode={mode}
@@ -196,6 +211,7 @@ export default function SearchPage() {
                   hasSearched={hasSearched}
                   hasMore={hasMore}
                   onLoadMore={loadMore}
+                  onFindSimilar={findSimilar}
                 />
               </motion.div>
             )}
