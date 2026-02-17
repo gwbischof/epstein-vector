@@ -247,16 +247,19 @@ class FuzzySearchResponse(BaseModel):
 
 
 def ensure_pg_trgm():
-    """Create pg_trgm extension and trigram index if they don't exist."""
-    pool = get_pool()
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_documents_trgm "
-                "ON documents USING gin (text gin_trgm_ops)"
-            )
-        conn.commit()
+    """Try to create pg_trgm extension and trigram index. Non-fatal if it fails."""
+    try:
+        pool = get_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_documents_trgm "
+                    "ON documents USING gin (text gin_trgm_ops)"
+                )
+            conn.commit()
+    except Exception as e:
+        logger.warning("pg_trgm setup skipped (fuzzy search will be unavailable): %s", e)
 
 
 def fuzzy_search(req: FuzzySearchRequest) -> FuzzySearchResponse:
