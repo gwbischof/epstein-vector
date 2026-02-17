@@ -25,7 +25,7 @@ Loads bge-large-en-v1.5 on both GPUs and round-robins batches between them. Edit
 
 ### Bulk Ingestion
 
-Ingestion is the one-time job that populates the database. It downloads the JSONL source files, chunks each document into ~200 word pieces, sends them to the GPU server for embedding, and inserts the vectors into Postgres.
+Ingestion populates the database. It downloads the JSONL source files, chunks each document into ~200 word pieces, sends them to the GPU server for embedding, and inserts the vectors into Postgres. Ingestion is resumable — it skips documents that already have embeddings in the database, so you can safely re-run after a crash or interruption.
 
 ```bash
 uv sync --extra client

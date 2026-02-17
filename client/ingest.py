@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS chunks (
     chunk_index INT,
     total_chunks INT,
     text TEXT,
-    embedding halfvec(1024)
+    embedding halfvec(1024),
+    UNIQUE (efta_id, chunk_index)
 );
 
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks
@@ -130,6 +131,7 @@ def insert_chunks(
                 """
                 INSERT INTO chunks (efta_id, chunk_index, total_chunks, text, embedding)
                 VALUES (%s, %s, %s, %s, %s::halfvec)
+                ON CONFLICT (efta_id, chunk_index) DO NOTHING
                 """,
                 values,
             )
@@ -138,11 +140,19 @@ def insert_chunks(
     return inserted
 
 
+def get_embedded_efta_ids(conn: psycopg.Connection) -> set[str]:
+    """Get set of efta_ids that already have chunks in the database."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT efta_id FROM chunks")
+        return {row[0] for row in cur.fetchall()}
+
+
 def ingest_dataset(
     dataset: int,
     conn: psycopg.Connection,
     embed_client: EmbeddingClient,
     data_dir: Path,
+    done_ids: set[str],
 ) -> dict:
     """Full pipeline for a single dataset."""
     logger.info(f"=== Dataset {dataset} ===")
@@ -156,11 +166,15 @@ def ingest_dataset(
     doc_count = insert_documents(conn, docs)
     logger.info(f"Inserted {doc_count} new documents")
 
+    # Filter out already-embedded docs
+    new_docs = [d for d in docs if d.get("efta_id") not in done_ids]
+    logger.info(f"Skipping {len(docs) - len(new_docs)} already-embedded docs, {len(new_docs)} remaining")
+
     # Chunk
-    chunks = chunk_documents(docs)
+    chunks = chunk_documents(new_docs)
     if not chunks:
         logger.info("No chunks to embed")
-        return {"dataset": dataset, "docs": len(docs), "chunks": 0}
+        return {"dataset": dataset, "docs": len(docs), "new": len(new_docs), "chunks": 0}
 
     # Embed
     texts = [c.text for c in chunks]
@@ -170,7 +184,11 @@ def ingest_dataset(
     chunk_count = insert_chunks(conn, chunks, embeddings)
     logger.info(f"Inserted {chunk_count} chunks")
 
-    return {"dataset": dataset, "docs": len(docs), "chunks": chunk_count}
+    # Track newly inserted ids
+    for d in new_docs:
+        done_ids.add(d.get("efta_id"))
+
+    return {"dataset": dataset, "docs": len(docs), "new": len(new_docs), "chunks": chunk_count}
 
 
 def main():
@@ -189,9 +207,11 @@ def main():
 
     with psycopg.connect(args.db_url) as conn:
         ensure_schema(conn, reader_password=args.reader_password)
+        done_ids = get_embedded_efta_ids(conn)
+        logger.info(f"Found {len(done_ids)} already-embedded documents")
         results = []
         for ds in args.datasets:
-            result = ingest_dataset(ds, conn, embed_client, args.data_dir)
+            result = ingest_dataset(ds, conn, embed_client, args.data_dir, done_ids)
             results.append(result)
             logger.info(f"Dataset {ds}: {result}")
 
