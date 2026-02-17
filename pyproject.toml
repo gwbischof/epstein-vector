@@ -26,6 +26,9 @@ api = [
     "torch>=2.0",
 ]
 
+[tool.setuptools.packages.find]
+include = []
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
