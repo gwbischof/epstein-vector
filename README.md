@@ -104,6 +104,7 @@ Response:
 Parameters:
 - `query` (required): search text
 - `limit` (optional, default 20, max 100): number of results
+- `offset` (optional, default 0): skip results for pagination
 - `dataset` (optional): filter to specific dataset number
 
 ### POST /text_search
@@ -134,9 +135,38 @@ Response:
 }
 ```
 
+Keyword search supports several query syntaxes:
+
+| Syntax | Example | Behavior |
+|---|---|---|
+| Plain terms | `Maxwell flight` | AND — both words must appear |
+| Exact phrase | `"wire transfer"` | Phrase match |
+| OR | `Maxwell OR Brunel` | Either term |
+| NOT | `island -vacation` | Exclude a term |
+| Wildcard | `maxw*` | Prefix match |
+
 Parameters:
-- `query` (required): search text (words are ANDed together)
+- `query` (required): search text
 - `limit` (optional, default 20, max 100): number of results
+- `offset` (optional, default 0): skip results for pagination
+- `dataset` (optional): filter to specific dataset number
+
+### POST /similarity_search
+
+Find documents similar to a given chunk — uses the existing embedding without re-encoding.
+
+```bash
+curl -X POST http://localhost:8000/similarity_search \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"efta_id": "EFTA00123456", "chunk_index": 0, "limit": 10}'
+```
+
+Parameters:
+- `efta_id` (required): source document ID
+- `chunk_index` (optional, default 0): which chunk to use as the query vector
+- `limit` (optional, default 20, max 100): number of results
+- `offset` (optional, default 0): skip results for pagination
 - `dataset` (optional): filter to specific dataset number
 
 ### GET /health
@@ -144,6 +174,18 @@ Parameters:
 ```bash
 curl http://localhost:8000/health
 ```
+
+## Web Frontend
+
+A search UI at `web/` — Next.js with semantic + keyword search, infinite scroll, similarity search, and links to DOJ source PDFs.
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+The frontend calls the API directly from the browser (same domain via Traefik path routing). Users enter an API key which is stored in localStorage.
 
 ## Environment Variables
 
@@ -194,6 +236,7 @@ ssh deploy@yourserver "docker exec epstein-vector-pg pg_dump -U epstein -Fc epst
 
 - **Embedding model**: bge-large-en-v1.5 (1024 dims, 512 token limit)
 - **Vector DB**: Postgres 17 + pgvector (halfvec for 50% storage savings)
-- **Chunking**: ~200 words per chunk, 30 word overlap, contextual prefix
+- **Chunking**: ~200 words per chunk, 30 word overlap, contextual prefix, OCR quality filter (alpha ratio >50%)
+- **Web UI**: Next.js 15, Tailwind v4, Framer Motion
 - **API**: FastAPI + uvicorn
 - **GPU server**: BentoML (tested on 2x GTX 1080Ti)
