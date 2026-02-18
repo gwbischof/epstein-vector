@@ -193,6 +193,17 @@ export default function SearchPage() {
                   )}
                 </div>
 
+                {/* Result count */}
+                {hasSearched && !loading && (vectorResults.length > 0 || textResults.length > 0 || fuzzyResults.length > 0) && (
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-1 h-1 rounded-full bg-cyan-500/50" />
+                    <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
+                      {(mode === "semantic" ? vectorResults.length : mode === "fuzzy" ? fuzzyResults.length : textResults.length).toLocaleString()} results
+                      {hasMore && "+"}
+                    </span>
+                  </div>
+                )}
+
                 {/* Similar-to indicator */}
                 {similarTo && (
                   <motion.div
