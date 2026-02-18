@@ -23,7 +23,7 @@ export function eftaUrl(eftaId: string, dataset: number | null): string {
  * into single spaces and trim.
  */
 export function cleanText(text: string): string {
-  return text.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return text.replace(/[^\S\n]+/g, " ").trim();
 }
 
 /**

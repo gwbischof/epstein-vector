@@ -90,7 +90,7 @@ export function VectorResultCard({ result, index, query, onFindSimilar }: Vector
 
       {/* Text preview with exact query terms highlighted */}
       <div className="relative">
-        <p className="text-sm text-slate-300/90 leading-relaxed break-words">
+        <p className="text-sm text-slate-300/90 leading-relaxed break-words whitespace-pre-line">
           {segments.map((seg, i) =>
             seg.match ? (
               <span key={i} className="text-cyan-300 bg-cyan-500/15 rounded px-0.5">

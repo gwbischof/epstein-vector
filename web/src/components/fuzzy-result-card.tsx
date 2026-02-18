@@ -80,13 +80,13 @@ export function FuzzyResultCard({ result, index, query, onFindSimilar }: FuzzyRe
 
       {/* Text snippet with fuzzy match highlighted */}
       {highlight ? (
-        <p className="text-sm text-slate-300/90 leading-relaxed">
+        <p className="text-sm text-slate-300/90 leading-relaxed whitespace-pre-line">
           <span className="text-slate-400/70">{highlight.before} </span>
           <span className="text-cyan-300 bg-cyan-500/15 rounded px-0.5">{highlight.match}</span>
           <span className="text-slate-400/70"> {highlight.after}</span>
         </p>
       ) : (
-        <p className="text-sm text-slate-300/90 leading-relaxed line-clamp-4">
+        <p className="text-sm text-slate-300/90 leading-relaxed whitespace-pre-line line-clamp-4">
           {cleaned}
         </p>
       )}
