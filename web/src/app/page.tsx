@@ -36,6 +36,7 @@ export default function SearchPage() {
     error,
     hasSearched,
     hasMore,
+    totalResults,
     similarTo,
     executeSearch,
     loadMore,
@@ -110,12 +111,25 @@ export default function SearchPage() {
                   </p>
                 </motion.div>
 
-                {/* Search bar */}
+                {/* Controls row */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.35 }}
-                  className="w-full mb-6"
+                  className="flex items-center justify-center gap-3 mb-4"
+                >
+                  <SearchModeToggle mode={mode} onChange={setMode} />
+                  {mode === "fuzzy" && (
+                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
+                  )}
+                </motion.div>
+
+                {/* Search bar */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.45 }}
+                  className="w-full mb-10"
                 >
                   <SearchBar
                     query={query}
@@ -123,19 +137,6 @@ export default function SearchPage() {
                     onSearch={executeSearch}
                     loading={loading}
                   />
-                </motion.div>
-
-                {/* Controls row */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.45 }}
-                  className="flex items-center gap-3 mb-10"
-                >
-                  <SearchModeToggle mode={mode} onChange={setMode} />
-                  {mode === "fuzzy" && (
-                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
-                  )}
                 </motion.div>
 
                 {/* Example query chips */}
@@ -171,11 +172,19 @@ export default function SearchPage() {
                 animate={{ opacity: 1 }}
                 className="w-full max-w-3xl"
               >
-                {/* Compact search bar at top */}
+                {/* Controls */}
+                <div className="flex items-center justify-center gap-3 mb-3 mt-2">
+                  <SearchModeToggle mode={mode} onChange={setMode} />
+                  {mode === "fuzzy" && (
+                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
+                  )}
+                </div>
+
+                {/* Compact search bar */}
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mb-4 mt-2"
+                  className="mb-4"
                 >
                   <SearchBar
                     query={query}
@@ -185,21 +194,15 @@ export default function SearchPage() {
                   />
                 </motion.div>
 
-                {/* Controls */}
-                <div className="flex items-center gap-3 mb-6">
-                  <SearchModeToggle mode={mode} onChange={setMode} />
-                  {mode === "fuzzy" && (
-                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
-                  )}
-                </div>
-
                 {/* Result count */}
                 {hasSearched && !loading && (vectorResults.length > 0 || textResults.length > 0 || fuzzyResults.length > 0) && (
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-1 h-1 rounded-full bg-cyan-500/50" />
                     <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
-                      {(mode === "semantic" ? vectorResults.length : mode === "fuzzy" ? fuzzyResults.length : textResults.length).toLocaleString()} results
-                      {hasMore && "+"}
+                      {totalResults != null
+                        ? `${totalResults.toLocaleString()} results`
+                        : `${(mode === "semantic" ? vectorResults.length : mode === "fuzzy" ? fuzzyResults.length : textResults.length).toLocaleString()} results${hasMore ? "+" : ""}`
+                      }
                     </span>
                   </div>
                 )}

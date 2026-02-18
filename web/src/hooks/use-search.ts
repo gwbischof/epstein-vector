@@ -28,6 +28,7 @@ export function useSearch() {
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [totalResults, setTotalResults] = useState<number | null>(null);
   const [similarTo, setSimilarTo] = useState<string | null>(null); // display label
   const abortRef = useRef<AbortController | null>(null);
   const lastSearchRef = useRef<LastSearch | null>(null);
@@ -54,6 +55,7 @@ export function useSearch() {
       setHasSearched(true);
       setHasMore(true);
       setSimilarTo(null);
+      setTotalResults(null);
       lastSearchRef.current = { kind: "query", query: q, mode: m, dataset: d, excludeExact: exExact };
 
       try {
@@ -63,18 +65,21 @@ export function useSearch() {
           setTextResults([]);
           setFuzzyResults([]);
           setHasMore(res.results.length >= PAGE_SIZE);
+          setTotalResults(null); // vector search has no total
         } else if (m === "fuzzy") {
           const res = await fuzzySearch(q, apiKey, PAGE_SIZE, 0, d, exExact, controller.signal);
           setFuzzyResults(res.results);
           setVectorResults([]);
           setTextResults([]);
           setHasMore(res.results.length >= PAGE_SIZE);
+          setTotalResults(res.total ?? null);
         } else {
           const res = await textSearch(q, apiKey, PAGE_SIZE, 0, d, controller.signal);
           setTextResults(res.results);
           setVectorResults([]);
           setFuzzyResults([]);
           setHasMore(res.results.length >= PAGE_SIZE);
+          setTotalResults(res.total ?? null);
         }
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -189,6 +194,7 @@ export function useSearch() {
     error,
     hasSearched,
     hasMore,
+    totalResults,
     similarTo,
     executeSearch,
     loadMore,

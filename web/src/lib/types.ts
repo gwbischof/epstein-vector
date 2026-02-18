@@ -24,6 +24,7 @@ export interface TextResult {
 
 export interface TextSearchResponse {
   query: string;
+  total?: number;
   results: TextResult[];
 }
 
@@ -38,5 +39,6 @@ export interface FuzzyResult {
 
 export interface FuzzySearchResponse {
   query: string;
+  total?: number;
   results: FuzzyResult[];
 }
