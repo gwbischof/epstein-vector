@@ -19,6 +19,14 @@ export function eftaUrl(eftaId: string, dataset: number | null): string {
 }
 
 /**
+ * Clean OCR text: collapse runs of whitespace (from multi-column PDF layouts)
+ * into single spaces and trim.
+ */
+export function cleanText(text: string): string {
+  return text.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
  * Trigram similarity matching (replicates pg_trgm word_similarity behavior).
  * Finds the best-matching substring in `text` for `query` and returns
  * an excerpt with the match wrapped in <b> tags.

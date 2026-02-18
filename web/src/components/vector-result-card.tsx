@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { FileText, ChevronDown, ChevronUp, ExternalLink, Layers, Sparkles } from "lucide-react";
 import type { VectorResult } from "@/lib/types";
-import { eftaUrl, highlightExactTerms } from "@/lib/utils";
+import { eftaUrl, highlightExactTerms, cleanText } from "@/lib/utils";
 
 function scoreColor(score: number): string {
   if (score >= 0.5) return "bg-emerald-500";
@@ -27,7 +27,8 @@ interface VectorResultCardProps {
 
 export function VectorResultCard({ result, index, query, onFindSimilar }: VectorResultCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const preview = result.text.length > 300 && !expanded ? result.text.slice(0, 300) + "..." : result.text;
+  const cleaned = cleanText(result.text);
+  const preview = cleaned.length > 300 && !expanded ? cleaned.slice(0, 300) + "..." : cleaned;
 
   const segments = useMemo(
     () => highlightExactTerms(query, preview),
@@ -89,7 +90,7 @@ export function VectorResultCard({ result, index, query, onFindSimilar }: Vector
 
       {/* Text preview with exact query terms highlighted */}
       <div className="relative">
-        <p className="text-sm text-slate-300/90 leading-relaxed whitespace-pre-wrap break-words">
+        <p className="text-sm text-slate-300/90 leading-relaxed break-words">
           {segments.map((seg, i) =>
             seg.match ? (
               <span key={i} className="text-cyan-300 bg-cyan-500/15 rounded px-0.5">

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { FileText, ExternalLink, Layers, Sparkles, Percent } from "lucide-react";
 import type { FuzzyResult } from "@/lib/types";
-import { eftaUrl, highlightFuzzyMatch } from "@/lib/utils";
+import { eftaUrl, highlightFuzzyMatch, cleanText } from "@/lib/utils";
 
 interface FuzzyResultCardProps {
   result: FuzzyResult;
@@ -22,9 +22,11 @@ function similarityColor(sim: number): string {
 export function FuzzyResultCard({ result, index, query, onFindSimilar }: FuzzyResultCardProps) {
   const pct = Math.round(result.similarity * 100);
 
+  const cleaned = useMemo(() => cleanText(result.text), [result.text]);
+
   const highlight = useMemo(
-    () => highlightFuzzyMatch(query, result.text),
-    [query, result.text],
+    () => highlightFuzzyMatch(query, cleaned),
+    [query, cleaned],
   );
 
   return (
@@ -85,7 +87,7 @@ export function FuzzyResultCard({ result, index, query, onFindSimilar }: FuzzyRe
         </p>
       ) : (
         <p className="text-sm text-slate-300/90 leading-relaxed line-clamp-4">
-          {result.text}
+          {cleaned}
         </p>
       )}
 
