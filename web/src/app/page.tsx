@@ -6,7 +6,6 @@ import { Starfield } from "@/components/starfield";
 import { ApiKeyInput } from "@/components/api-key-input";
 import { SearchBar } from "@/components/search-bar";
 import { SearchModeToggle } from "@/components/search-mode-toggle";
-import { DatasetFilter } from "@/components/dataset-filter";
 import { SearchResults } from "@/components/search-results";
 import { ExcludeExactToggle } from "@/components/exclude-exact-toggle";
 import { useSearch } from "@/hooks/use-search";
@@ -27,8 +26,6 @@ export default function SearchPage() {
     setQuery,
     mode,
     setMode,
-    dataset,
-    setDataset,
     excludeExact,
     setExcludeExact,
     vectorResults,
@@ -136,10 +133,19 @@ export default function SearchPage() {
                   className="flex items-center gap-3 mb-10"
                 >
                   <SearchModeToggle mode={mode} onChange={setMode} />
-                  <DatasetFilter dataset={dataset} onChange={setDataset} />
-                  {mode === "fuzzy" && (
-                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
-                  )}
+                  <AnimatePresence>
+                    {mode === "fuzzy" && (
+                      <motion.div
+                        initial={{ opacity: 0, width: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, width: "auto", scale: 1 }}
+                        exit={{ opacity: 0, width: 0, scale: 0.8 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
 
                 {/* Example query chips */}
@@ -192,10 +198,19 @@ export default function SearchPage() {
                 {/* Controls */}
                 <div className="flex items-center gap-3 mb-6">
                   <SearchModeToggle mode={mode} onChange={setMode} />
-                  <DatasetFilter dataset={dataset} onChange={setDataset} />
-                  {mode === "fuzzy" && (
-                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
-                  )}
+                  <AnimatePresence>
+                    {mode === "fuzzy" && (
+                      <motion.div
+                        initial={{ opacity: 0, width: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, width: "auto", scale: 1 }}
+                        exit={{ opacity: 0, width: 0, scale: 0.8 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Similar-to indicator */}
