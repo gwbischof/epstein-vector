@@ -1,12 +1,13 @@
-"""BentoML embedding service with dual-GPU round-robin.
+"""BentoML embedding service with dual-GPU parallelism.
 
 Runs on Windows machine with 2x GTX 1080Ti, port 8200.
+Each batch is split across both GPUs and run in parallel.
 """
 
 from __future__ import annotations
 
-import itertools
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import bentoml
 
@@ -27,16 +28,33 @@ class EmbeddingService:
             m = BGEModel()
             m.load(device)
             self.models.append(m)
-        self._gpu_cycle = itertools.cycle(range(len(self.models)))
+        self._pool = ThreadPoolExecutor(max_workers=len(self.models))
         logger.info(f"Embedding service ready with {len(self.models)} GPUs")
 
     @bentoml.api
     def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed a batch of texts. Round-robins between GPUs."""
-        gpu_idx = next(self._gpu_cycle)
-        model = self.models[gpu_idx]
-        logger.info(f"Embedding {len(texts)} texts on cuda:{gpu_idx}")
-        return model.encode(texts)
+        """Embed a batch of texts, split across all GPUs in parallel."""
+        n_gpus = len(self.models)
+        if n_gpus == 1 or len(texts) < 2:
+            return self.models[0].encode(texts)
+
+        # Split texts into N chunks, one per GPU
+        chunks = [texts[i::n_gpus] for i in range(n_gpus)]
+        logger.info(f"Embedding {len(texts)} texts split across {n_gpus} GPUs ({[len(c) for c in chunks]})")
+
+        futures = [
+            self._pool.submit(model.encode, chunk)
+            for model, chunk in zip(self.models, chunks)
+        ]
+        results = [f.result() for f in futures]
+
+        # Interleave results back into original order
+        merged = [None] * len(texts)
+        for gpu_idx, gpu_results in enumerate(results):
+            for j, emb in enumerate(gpu_results):
+                merged[gpu_idx + j * n_gpus] = emb
+
+        return merged
 
     @bentoml.api
     def health(self) -> dict:
