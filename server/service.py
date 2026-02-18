@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 @bentoml.service(
     name="embedding_service",
     traffic={"timeout": 300},
-    resources={"gpu": 1, "gpu_type": "nvidia-gtx-1080-ti"},
+    resources={"gpu": 2, "gpu_type": "nvidia-gtx-1080-ti"},
 )
 class EmbeddingService:
     def __init__(self):
