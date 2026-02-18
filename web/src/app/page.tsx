@@ -133,19 +133,9 @@ export default function SearchPage() {
                   className="flex items-center gap-3 mb-10"
                 >
                   <SearchModeToggle mode={mode} onChange={setMode} />
-                  <AnimatePresence>
-                    {mode === "fuzzy" && (
-                      <motion.div
-                        initial={{ opacity: 0, width: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, width: "auto", scale: 1 }}
-                        exit={{ opacity: 0, width: 0, scale: 0.8 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                        style={{ overflow: "hidden" }}
-                      >
-                        <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {mode === "fuzzy" && (
+                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
+                  )}
                 </motion.div>
 
                 {/* Example query chips */}
@@ -198,19 +188,9 @@ export default function SearchPage() {
                 {/* Controls */}
                 <div className="flex items-center gap-3 mb-6">
                   <SearchModeToggle mode={mode} onChange={setMode} />
-                  <AnimatePresence>
-                    {mode === "fuzzy" && (
-                      <motion.div
-                        initial={{ opacity: 0, width: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, width: "auto", scale: 1 }}
-                        exit={{ opacity: 0, width: 0, scale: 0.8 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                        style={{ overflow: "hidden" }}
-                      >
-                        <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {mode === "fuzzy" && (
+                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
+                  )}
                 </div>
 
                 {/* Similar-to indicator */}
