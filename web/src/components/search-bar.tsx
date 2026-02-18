@@ -11,7 +11,7 @@ interface SearchBarProps {
 
 export function SearchBar({ query, onQueryChange, onSearch, loading }: SearchBarProps) {
   return (
-    <div className="relative w-full max-w-2xl group">
+    <div className="relative w-full group">
       {/* Outer glow ring */}
       <div className="absolute -inset-[1px] rounded-2xl bg-gradient-to-r from-cyan-500/20 via-violet-500/10 to-cyan-500/20 opacity-0 group-focus-within:opacity-100 transition-opacity duration-500 blur-sm" />
 
