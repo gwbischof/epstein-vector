@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import threading
 from pathlib import Path
+from queue import Queue
 
 import psycopg
 import psycopg.sql
 from tqdm import tqdm
 
-from client.chunk import Chunk, chunk_documents
+from client.chunk import Chunk, chunk_document, chunk_documents
 from client.download import download_jsonl, load_jsonl
 from client.embed import BATCH_SIZE, EmbeddingClient
 
@@ -85,28 +87,38 @@ def ensure_schema(conn: psycopg.Connection, reader_password: str | None = None) 
     logger.info("Schema ready")
 
 
-def insert_documents(conn: psycopg.Connection, docs: list[dict]) -> int:
-    """Insert document metadata, skipping duplicates."""
+MAX_TSV_BYTES = 1_000_000  # PostgreSQL tsvector limit is 1048575 bytes
+
+
+def insert_documents(conn: psycopg.Connection, docs: list[dict], batch_size: int = 500) -> int:
+    """Insert document metadata in batches, skipping duplicates."""
     inserted = 0
     with conn.cursor() as cur:
-        for doc in docs:
-            cur.execute(
-                """
-                INSERT INTO documents (efta_id, dataset, url, pages, word_count, text)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (efta_id) DO NOTHING
-                """,
-                (
+        for i in tqdm(range(0, len(docs), batch_size), desc="Inserting docs", unit="batch"):
+            batch = docs[i : i + batch_size]
+            values = []
+            for doc in batch:
+                text = doc.get("text", "")
+                if len(text.encode("utf-8")) > MAX_TSV_BYTES:
+                    text = text[:MAX_TSV_BYTES]
+                values.append((
                     doc.get("efta_id") or doc.get("efta"),
                     int(doc.get("dataset", 0)),
                     doc.get("url", ""),
                     doc.get("pages", 0),
                     doc.get("word_count", 0),
-                    doc.get("text", ""),
-                ),
+                    text,
+                ))
+            cur.executemany(
+                """
+                INSERT INTO documents (efta_id, dataset, url, pages, word_count, text)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (efta_id) DO NOTHING
+                """,
+                values,
             )
-            inserted += cur.rowcount
-    conn.commit()
+            inserted += len(values)
+            conn.commit()
     return inserted
 
 
@@ -152,14 +164,68 @@ def get_embedded_efta_ids(conn: psycopg.Connection) -> set[str]:
         return {row[0] for row in cur.fetchall()}
 
 
+def _embed_worker(
+    chunk_queue: Queue,
+    db_url: str,
+    embed_client: EmbeddingClient,
+    result: dict,
+):
+    """Worker thread: pull chunk batches from queue, embed, insert into DB."""
+    try:
+        with psycopg.connect(db_url) as conn:
+            while True:
+                item = chunk_queue.get()
+                if item is None:  # poison pill
+                    break
+                chunks: list[Chunk] = item
+                texts = [c.text for c in chunks]
+                embeddings = embed_client.embed_batch(texts)
+                count = insert_chunks(conn, chunks, embeddings)
+                result["chunks"] += count
+                logger.info(f"Embedded + inserted {len(chunks)} chunks (total: {result['chunks']})")
+    except Exception as e:
+        result["error"] = e
+        logger.error(f"Embed worker failed: {e}")
+
+
+def _insert_one_doc(conn: psycopg.Connection, doc: dict) -> None:
+    """Insert a single document row (needed before its chunks can be inserted)."""
+    text = doc.get("text", "")
+    if len(text.encode("utf-8")) > MAX_TSV_BYTES:
+        text = text[:MAX_TSV_BYTES]
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO documents (efta_id, dataset, url, pages, word_count, text)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (efta_id) DO NOTHING
+            """,
+            (
+                doc.get("efta_id") or doc.get("efta"),
+                int(doc.get("dataset", 0)),
+                doc.get("url", ""),
+                doc.get("pages", 0),
+                doc.get("word_count", 0),
+                text,
+            ),
+        )
+    conn.commit()
+
+
 def ingest_dataset(
     dataset: int,
+    db_url: str,
     conn: psycopg.Connection,
     embed_client: EmbeddingClient,
     data_dir: Path,
     done_ids: set[str],
 ) -> dict:
-    """Full pipeline for a single dataset."""
+    """Full pipeline for a single dataset.
+
+    For each doc: insert row → chunk → accumulate. Once a batch of chunks
+    reaches BATCH_SIZE, a worker thread embeds and inserts them while the
+    main thread continues inserting + chunking the next docs.
+    """
     logger.info(f"=== Dataset {dataset} ===")
 
     # Download
@@ -167,33 +233,69 @@ def ingest_dataset(
     docs = load_jsonl(jsonl_path)
     logger.info(f"Loaded {len(docs)} documents")
 
-    # Insert document metadata
-    doc_count = insert_documents(conn, docs)
-    logger.info(f"Inserted {doc_count} new documents")
-
-    # Filter out already-embedded docs
+    # Filter to docs needing embedding
     new_docs = [d for d in docs if (d.get("efta_id") or d.get("efta")) not in done_ids]
-    logger.info(f"Skipping {len(docs) - len(new_docs)} already-embedded docs, {len(new_docs)} remaining")
+    logger.info(f"{len(new_docs)} docs to embed ({len(docs) - len(new_docs)} already done)")
 
-    # Chunk
-    chunks = chunk_documents(new_docs)
-    if not chunks:
-        logger.info("No chunks to embed")
-        return {"dataset": dataset, "docs": len(docs), "new": len(new_docs), "chunks": 0}
+    if not new_docs:
+        return {"dataset": dataset, "docs": len(docs), "new": 0, "chunks": 0}
 
-    # Embed
-    texts = [c.text for c in chunks]
-    embeddings = embed_client.embed_all(texts, batch_size=BATCH_SIZE)
+    # Pipeline: main thread inserts+chunks, worker thread embeds+inserts chunks
+    chunk_queue: Queue = Queue(maxsize=4)
+    result: dict = {"chunks": 0}
 
-    # Insert
-    chunk_count = insert_chunks(conn, chunks, embeddings)
-    logger.info(f"Inserted {chunk_count} chunks")
+    worker = threading.Thread(
+        target=_embed_worker,
+        args=(chunk_queue, db_url, embed_client, result),
+        daemon=True,
+    )
+    worker.start()
 
-    # Track newly inserted ids
+    batch: list[Chunk] = []
+    skipped = 0
+    for i, doc in enumerate(new_docs):
+        # Check if worker died
+        if "error" in result:
+            raise RuntimeError(f"Embed worker failed: {result['error']}") from result["error"]
+
+        # Insert this doc's row so FK constraint is satisfied
+        _insert_one_doc(conn, doc)
+
+        # Chunk immediately
+        doc_chunks = chunk_document(doc)
+        if not doc_chunks:
+            skipped += 1
+            continue
+
+        batch.extend(doc_chunks)
+
+        # When batch is full, send to embed worker
+        while len(batch) >= BATCH_SIZE:
+            chunk_queue.put(batch[:BATCH_SIZE])
+            batch = batch[BATCH_SIZE:]
+
+        if (i + 1) % 1000 == 0:
+            logger.info(f"Inserted + chunked {i + 1}/{len(new_docs)} docs")
+
+    # Send remaining chunks
+    if batch:
+        chunk_queue.put(batch)
+
+    # Signal worker to stop and wait
+    chunk_queue.put(None)
+    worker.join()
+
+    if "error" in result:
+        raise RuntimeError(f"Embed worker failed: {result['error']}") from result["error"]
+
+    logger.info(f"Skipped {skipped} docs (no extractable text)")
+
+    # Track completed ids
     for d in new_docs:
         done_ids.add(d.get("efta_id") or d.get("efta"))
 
-    return {"dataset": dataset, "docs": len(docs), "new": len(new_docs), "chunks": chunk_count}
+    logger.info(f"Dataset {dataset} complete: {len(new_docs)} new docs, {result['chunks']} chunks")
+    return {"dataset": dataset, "docs": len(docs), "new": len(new_docs), "chunks": result["chunks"]}
 
 
 def main():
@@ -216,7 +318,7 @@ def main():
         logger.info(f"Found {len(done_ids)} already-embedded documents")
         results = []
         for ds in args.datasets:
-            result = ingest_dataset(ds, conn, embed_client, args.data_dir, done_ids)
+            result = ingest_dataset(ds, args.db_url, conn, embed_client, args.data_dir, done_ids)
             results.append(result)
             logger.info(f"Dataset {ds}: {result}")
 
