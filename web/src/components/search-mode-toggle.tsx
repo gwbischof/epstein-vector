@@ -16,33 +16,28 @@ interface SearchModeToggleProps {
 }
 
 export function SearchModeToggle({ mode, onChange }: SearchModeToggleProps) {
-  const activeIndex = MODES.findIndex((m) => m.value === mode);
-
   return (
-    <div className="glass rounded-xl p-1 flex relative">
-      {/* Sliding indicator */}
-      <motion.div
-        className="absolute inset-y-1 rounded-lg bg-cyan-500/15 border border-cyan-500/25"
-        layout
-        transition={{ type: "spring", stiffness: 400, damping: 35 }}
-        style={{
-          left: `calc(${activeIndex} * 33.333% + 4px)`,
-          width: "calc(33.333% - 4px)",
-        }}
-      />
-
+    <div className="glass rounded-xl p-1 flex">
       {MODES.map((m) => {
         const Icon = m.icon;
+        const isActive = mode === m.value;
         return (
           <button
             key={m.value}
             onClick={() => onChange(m.value)}
-            className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium uppercase tracking-wider transition-colors ${
-              mode === m.value ? "text-cyan-400" : "text-slate-500 hover:text-slate-300"
+            className={`relative flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-medium uppercase tracking-wider transition-colors ${
+              isActive ? "text-cyan-400" : "text-slate-500 hover:text-slate-300"
             }`}
           >
-            <Icon className="w-3.5 h-3.5" />
-            {m.label}
+            {isActive && (
+              <motion.div
+                layoutId="mode-indicator"
+                className="absolute inset-0 rounded-lg bg-cyan-500/15 border border-cyan-500/25"
+                transition={{ type: "spring", stiffness: 400, damping: 35 }}
+              />
+            )}
+            <Icon className="relative z-10 w-3.5 h-3.5" />
+            <span className="relative z-10">{m.label}</span>
           </button>
         );
       })}
