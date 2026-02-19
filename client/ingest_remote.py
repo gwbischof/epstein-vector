@@ -173,12 +173,16 @@ def ingest_dataset(
     if not new_docs:
         return {"dataset": dataset, "total": len(docs), "new": 0, "chunks": 0}
 
-    # Process in batches
+    initial_new = len(new_docs)
+
+    # Process in batches, re-checking done list periodically
     total_chunks = 0
-    for batch_start in range(0, len(new_docs), BATCH_SIZE):
-        batch_docs = new_docs[batch_start : batch_start + BATCH_SIZE]
-        batch_num = batch_start // BATCH_SIZE + 1
-        total_batches = (len(new_docs) + BATCH_SIZE - 1) // BATCH_SIZE
+    batch_num = 0
+    while new_docs:
+        batch_docs = new_docs[:BATCH_SIZE]
+        new_docs = new_docs[BATCH_SIZE:]
+        batch_num += 1
+        remaining = len(new_docs)
 
         # Chunk all docs in this batch
         all_chunks: list[Chunk] = []
@@ -190,24 +194,33 @@ def ingest_dataset(
                 chunkable_docs.append(doc)
 
         if not all_chunks:
-            logger.info(f"Batch {batch_num}/{total_batches}: no chunkable docs, skipping")
+            logger.info(f"Batch {batch_num}: no chunkable docs, skipping ({remaining} remaining)")
             continue
 
         # Embed all chunks on local GPU(s)
-        logger.info(f"Batch {batch_num}/{total_batches}: embedding {len(all_chunks)} chunks from {len(chunkable_docs)} docs...")
+        logger.info(f"Batch {batch_num}: embedding {len(all_chunks)} chunks from {len(chunkable_docs)} docs ({remaining} remaining)...")
         embeddings = embed_chunks(models, all_chunks)
 
-        # POST to API — send all docs in batch (including unchunkable) for document row insertion
-        logger.info(f"Batch {batch_num}/{total_batches}: uploading...")
+        # POST to API
+        logger.info(f"Batch {batch_num}: uploading...")
         result = post_batch(batch_docs, all_chunks, embeddings, session)
         total_chunks += len(all_chunks)
         logger.info(
-            f"Batch {batch_num}/{total_batches}: done — "
+            f"Batch {batch_num}: done — "
             f"{result.get('inserted_documents', 0)} docs, {result.get('inserted_chunks', 0)} chunks"
         )
 
-    logger.info(f"Dataset {dataset} complete: {len(new_docs)} new docs, {total_chunks} chunks")
-    return {"dataset": dataset, "total": len(docs), "new": len(new_docs), "chunks": total_chunks}
+        # Re-check done list every 10 batches to skip work other workers completed
+        if batch_num % 10 == 0 and new_docs:
+            done_ids = get_done_ids(dataset, session)
+            before = len(new_docs)
+            new_docs = [d for d in new_docs if (d.get("efta_id") or d.get("efta")) not in done_ids]
+            skipped = before - len(new_docs)
+            if skipped:
+                logger.info(f"Refreshed done list: skipped {skipped} docs completed by other workers")
+
+    logger.info(f"Dataset {dataset} complete: {total_chunks} chunks embedded")
+    return {"dataset": dataset, "total": len(docs), "new": initial_new, "chunks": total_chunks}
 
 
 def main():
