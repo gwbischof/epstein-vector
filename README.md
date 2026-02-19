@@ -231,6 +231,8 @@ Container (your GPU)                 Server (vector.korroni.cloud)
 docker build -f Dockerfile.ingest -t epstein-ingest .
 ```
 
+First build downloads PyTorch + CUDA (~2GB) and model weights (~1.3GB) — expect 5-10 minutes. These layers are cached so rebuilds after code changes are fast.
+
 ### Run
 
 ```bash
