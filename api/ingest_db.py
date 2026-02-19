@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
+
+logger = logging.getLogger(__name__)
 
 INGEST_DATABASE_URL = os.environ.get("INGEST_DATABASE_URL", "")
 
@@ -17,9 +20,12 @@ def get_ingest_pool() -> ConnectionPool:
     if not INGEST_DATABASE_URL:
         raise RuntimeError("INGEST_DATABASE_URL not set — ingestion endpoints disabled")
     if _pool is None:
+        # Mask password for logging
+        masked = INGEST_DATABASE_URL.split("@")[-1] if "@" in INGEST_DATABASE_URL else INGEST_DATABASE_URL
+        logger.info(f"Creating ingest pool: ...@{masked}")
         _pool = ConnectionPool(
             INGEST_DATABASE_URL,
-            min_size=2,
+            min_size=0,
             max_size=10,
             kwargs={"row_factory": dict_row},
         )

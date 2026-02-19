@@ -67,7 +67,11 @@ def ingest_done(dataset: int | None = None, efta_id: str | None = None) -> DoneR
     - ?efta_id=EFTA001234  → check if single doc is done
     - ?dataset=9&efta_id=X → check if doc is done within dataset
     """
-    pool = get_ingest_pool()
+    try:
+        pool = get_ingest_pool()
+    except Exception as e:
+        logger.error(f"Ingest pool error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
 
     # Single-doc check
     if efta_id is not None:
