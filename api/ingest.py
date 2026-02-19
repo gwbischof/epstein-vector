@@ -58,6 +58,22 @@ class DoneResponse(BaseModel):
 # --- Endpoints ---
 
 
+@router.get("/ingest/health")
+def ingest_health():
+    """Check ingest DB connectivity."""
+    try:
+        pool = get_ingest_pool()
+    except Exception as e:
+        return {"status": "error", "stage": "pool_create", "detail": str(e)}
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "stage": "connection", "detail": str(e)}
+
+
 @router.get("/ingest/done")
 def ingest_done(dataset: int | None = None, efta_id: str | None = None) -> DoneResponse:
     """Check which documents are already embedded.
