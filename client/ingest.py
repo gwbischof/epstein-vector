@@ -99,8 +99,9 @@ def insert_documents(conn: psycopg.Connection, docs: list[dict], batch_size: int
             values = []
             for doc in batch:
                 text = doc.get("text", "")
-                if len(text.encode("utf-8")) > MAX_TSV_BYTES:
-                    text = text[:MAX_TSV_BYTES]
+                encoded = text.encode("utf-8")
+                if len(encoded) > MAX_TSV_BYTES:
+                    text = encoded[:MAX_TSV_BYTES].decode("utf-8", errors="ignore")
                 values.append((
                     doc.get("efta_id") or doc.get("efta"),
                     int(doc.get("dataset", 0)),
@@ -191,8 +192,9 @@ def _embed_worker(
 def _insert_one_doc(conn: psycopg.Connection, doc: dict) -> None:
     """Insert a single document row (needed before its chunks can be inserted)."""
     text = doc.get("text", "")
-    if len(text.encode("utf-8")) > MAX_TSV_BYTES:
-        text = text[:MAX_TSV_BYTES]
+    encoded = text.encode("utf-8")
+    if len(encoded) > MAX_TSV_BYTES:
+        text = encoded[:MAX_TSV_BYTES].decode("utf-8", errors="ignore")
     with conn.cursor() as cur:
         cur.execute(
             """
