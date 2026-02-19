@@ -87,7 +87,7 @@ def ensure_schema(conn: psycopg.Connection, reader_password: str | None = None) 
     logger.info("Schema ready")
 
 
-MAX_TSV_BYTES = 1_000_000  # PostgreSQL tsvector limit is 1048575 bytes
+MAX_TSV_BYTES = 750_000  # PostgreSQL tsvector limit is 1048575 bytes; tsvector can expand beyond input size
 
 
 def insert_documents(conn: psycopg.Connection, docs: list[dict], batch_size: int = 500) -> int:
