@@ -211,6 +211,59 @@ Parameters:
 curl http://localhost:8000/health
 ```
 
+## Distributed GPU Ingestion
+
+Contributors can run a Docker container on their own GPU to help embed documents. The container downloads source data, embeds locally, and uploads results to the API — no database credentials needed.
+
+```
+Container (your GPU)                 Server (vector.korroni.cloud)
+1. Download JSONL locally
+2. GET /ingest/done?dataset=9  ───>  Returns set of completed efta_ids
+3. Skip done docs
+4. Chunk + embed (local GPU)
+5. POST /ingest               ───>  Inserts docs + chunks into Postgres
+6. Repeat until done
+```
+
+### Build the container
+
+```bash
+docker build -f Dockerfile.ingest -t epstein-ingest .
+```
+
+### Run
+
+```bash
+docker run --gpus all \
+  -e API_URL="https://vector.korroni.cloud" \
+  -e API_KEY="your-ingest-api-key" \
+  -e DATASETS="9" \
+  epstein-ingest
+```
+
+### Environment variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `API_URL` | Vector API base URL | `https://vector.korroni.cloud` |
+| `API_KEY` | Ingest API key (get from maintainer) | *(required)* |
+| `DATASETS` | Comma-separated dataset numbers | `1,2,3,4,5,6,7,8,9,10,11,12` |
+| `CUDA_DEVICES` | GPU indices, or `cpu` | `0` |
+
+### Multi-GPU
+
+```bash
+docker run --gpus all \
+  -e CUDA_DEVICES="0,1" \
+  -e DATASETS="9,10,11,12" \
+  -e API_KEY="your-ingest-api-key" \
+  epstein-ingest
+```
+
+### Resumability
+
+The worker checks `/ingest/done` before processing each dataset and skips already-embedded documents. You can kill and restart at any time. Multiple workers on the same dataset are safe — `ON CONFLICT DO NOTHING` handles overlap.
+
 ## Web Frontend
 
 A search UI at `web/` — Next.js with semantic + keyword search, infinite scroll, similarity search, and links to DOJ source PDFs.
@@ -227,8 +280,10 @@ The frontend calls the API directly from the browser (same domain via Traefik pa
 
 | Variable | Description | Default |
 |---|---|---|
-| `DATABASE_URL` | Postgres connection string | `postgresql://epstein_reader:epstein@localhost:5432/epstein` |
-| `API_KEY` | API authentication key (optional) | *(none — no auth)* |
+| `DATABASE_URL` | Postgres connection string (read-only) | `postgresql://epstein_reader:epstein@localhost:5432/epstein` |
+| `INGEST_DATABASE_URL` | Postgres connection string (write) | *(none — ingestion disabled)* |
+| `API_KEY` | API key for search endpoints (optional) | *(none — no auth)* |
+| `INGEST_API_KEY` | API key for ingestion endpoints (optional) | *(none — no auth)* |
 
 ## Deployment
 
@@ -244,7 +299,8 @@ Required secrets in a `deployment` environment:
 | `DOCKER_NETWORK` | Docker network (for Traefik) |
 | `POSTGRES_PASSWORD` | Postgres admin password (for ingestion) |
 | `READER_PASSWORD` | Postgres read-only password (used by API) |
-| `API_KEY` | API authentication key |
+| `API_KEY` | API authentication key (search endpoints) |
+| `INGEST_API_KEY` | API authentication key (ingestion endpoints) |
 
 ## Backup & Restore
 

@@ -12,10 +12,13 @@ from fastapi.security import APIKeyHeader
 
 from api import search as search_module
 from api.db import close_pool
+from api.ingest import router as ingest_router
+from api.ingest_db import close_ingest_pool
 
 logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("API_KEY", "")
+INGEST_API_KEY = os.environ.get("INGEST_API_KEY", "")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -23,6 +26,13 @@ def verify_api_key(key: str | None = Security(api_key_header)):
     if not API_KEY:
         return  # No key configured = no auth
     if key is None or not hmac.compare_digest(key, API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+def verify_ingest_api_key(key: str | None = Security(api_key_header)):
+    if not INGEST_API_KEY:
+        return  # No key configured = no auth
+    if key is None or not hmac.compare_digest(key, INGEST_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -39,6 +49,7 @@ async def lifespan(app: FastAPI):
     logger.info("pg_trgm extension and index ensured")
     yield
     close_pool()
+    close_ingest_pool()
 
 
 app = FastAPI(
@@ -49,6 +60,9 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+app.include_router(ingest_router, dependencies=[Depends(verify_ingest_api_key)])
 
 
 @app.get("/health")

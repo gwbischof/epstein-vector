@@ -25,6 +25,13 @@ api = [
     "sentence-transformers>=3.0",
     "torch>=2.0",
 ]
+ingest = [
+    "requests>=2.31",
+    "langchain-text-splitters>=0.2",
+    "tqdm>=4.66",
+    "sentence-transformers>=3.0",
+    "torch>=2.0",
+]
 
 [tool.setuptools.packages.find]
 include = []
