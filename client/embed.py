@@ -11,7 +11,7 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 DEFAULT_SERVER = "http://localhost:8200"
-BATCH_SIZE = 1024
+BATCH_SIZE = 512
 
 
 class EmbeddingClient:

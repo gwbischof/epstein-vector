@@ -24,12 +24,11 @@ logger = logging.getLogger(__name__)
 class EmbeddingService:
     def __init__(self):
         self.models: list[BGEModel] = []
-        for device in ("cuda:0", "cuda:1"):
-            m = BGEModel()
-            m.load(device)
-            self.models.append(m)
+        m = BGEModel()
+        m.load("cuda:1")
+        self.models.append(m)
         self._pool = ThreadPoolExecutor(max_workers=len(self.models))
-        logger.info(f"Embedding service ready with {len(self.models)} GPUs")
+        logger.info("Embedding service ready with 1 GPU (cuda:1)")
 
     @bentoml.api
     def embed(self, texts: list[str]) -> list[list[float]]:
