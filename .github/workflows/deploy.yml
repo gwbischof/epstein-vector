@@ -123,8 +123,8 @@ jobs:
               --name "$CONTAINER_NAME" \
               --restart unless-stopped \
               --network "$NETWORK" \
-              -e DATABASE_URL="postgresql://epstein_reader:${{ secrets.READER_PASSWORD }}@$PG_CONTAINER:5432/epstein" \
-              -e INGEST_DATABASE_URL="postgresql://epstein:${{ secrets.POSTGRES_PASSWORD }}@$PG_CONTAINER:5432/epstein" \
+              -e DATABASE_URL="postgresql://epstein_reader:$(python3 -c "import urllib.parse; print(urllib.parse.quote('${{ secrets.READER_PASSWORD }}', safe=''))")@$PG_CONTAINER:5432/epstein" \
+              -e INGEST_DATABASE_URL="postgresql://epstein:$(python3 -c "import urllib.parse; print(urllib.parse.quote('${{ secrets.POSTGRES_PASSWORD }}', safe=''))")@$PG_CONTAINER:5432/epstein" \
               -e API_KEY="${{ secrets.API_KEY }}" \
               -e INGEST_API_KEY="${{ secrets.INGEST_API_KEY }}" \
               -l "traefik.enable=true" \
