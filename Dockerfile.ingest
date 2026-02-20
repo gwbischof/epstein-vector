@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Switch to non-root user before installing deps (avoids chown on large .venv)
+RUN chown appuser:appuser /app
+USER appuser
+
 # Install Python deps
 RUN uv venv && uv pip install --prerelease=allow \
     "requests>=2.31" \
@@ -27,16 +31,12 @@ RUN .venv/bin/python -c "from sentence_transformers import SentenceTransformer; 
 ENV HF_HUB_OFFLINE=1
 
 # Copy app code (only what's needed)
-COPY server/models/bge.py server/models/bge.py
-COPY server/__init__.py server/__init__.py
-COPY server/models/__init__.py server/models/__init__.py
-COPY client/chunk.py client/chunk.py
-COPY client/download.py client/download.py
-COPY client/ingest_remote.py client/ingest_remote.py
-COPY client/__init__.py client/__init__.py
-
-# Hand ownership to non-root user
-RUN chown -R appuser:appuser /app
-USER appuser
+COPY --chown=appuser:appuser server/models/bge.py server/models/bge.py
+COPY --chown=appuser:appuser server/__init__.py server/__init__.py
+COPY --chown=appuser:appuser server/models/__init__.py server/models/__init__.py
+COPY --chown=appuser:appuser client/chunk.py client/chunk.py
+COPY --chown=appuser:appuser client/download.py client/download.py
+COPY --chown=appuser:appuser client/ingest_remote.py client/ingest_remote.py
+COPY --chown=appuser:appuser client/__init__.py client/__init__.py
 
 ENTRYPOINT [".venv/bin/python", "-m", "client.ingest_remote"]
