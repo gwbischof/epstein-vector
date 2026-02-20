@@ -21,6 +21,7 @@ USER appuser
 ARG TORCH_INDEX=cu118
 RUN uv venv && uv pip install \
     $(echo "${TORCH_INDEX}" | grep -q nightly && echo "--prerelease=allow") \
+    --index-strategy unsafe-best-match \
     "requests>=2.31" \
     "langchain-text-splitters>=0.2" \
     "tqdm>=4.66" \
