@@ -19,7 +19,8 @@ USER appuser
 # TORCH_INDEX: use cu118 for older GPUs (Pascal, Turing, Ampere)
 #              use nightly/cu128 for Blackwell (RTX 50 series)
 ARG TORCH_INDEX=cu118
-RUN uv venv && uv pip install --prerelease=allow \
+RUN uv venv && uv pip install \
+    $(echo "${TORCH_INDEX}" | grep -q nightly && echo "--prerelease=allow") \
     "requests>=2.31" \
     "langchain-text-splitters>=0.2" \
     "tqdm>=4.66" \
