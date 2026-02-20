@@ -254,12 +254,23 @@ docker run --gpus all \
 
 ### Multi-GPU
 
+`--gpus all` makes GPUs visible to the container (required). `CUDA_DEVICES` controls which ones the worker uses.
+
+Load the model on both GPUs in one container:
+
 ```bash
 docker run --gpus all \
   -e CUDA_DEVICES="0,1" \
   -e DATASETS="9,10,11,12" \
   -e API_KEY="your-ingest-api-key" \
   epstein-ingest
+```
+
+Or run separate containers per GPU — simpler and they naturally avoid duplicate work:
+
+```bash
+docker run --gpus all -e CUDA_DEVICES="0" -e API_KEY="your-ingest-api-key" -e DATASETS="9" epstein-ingest
+docker run --gpus all -e CUDA_DEVICES="1" -e API_KEY="your-ingest-api-key" -e DATASETS="9" epstein-ingest
 ```
 
 ### Resumability

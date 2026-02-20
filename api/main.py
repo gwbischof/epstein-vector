@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     logger.info("Loading embedding model on CPU...")
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer("BAAI/bge-large-en-v1.5", device="cpu")
+    model = SentenceTransformer("BAAI/bge-large-en-v1.5", revision="d4aa6901d3a41ba39fb536a557fa166f842b0e09", device="cpu")
     search_module.set_model(model)
     logger.info("Embedding model loaded")
     search_module.ensure_pg_trgm()
