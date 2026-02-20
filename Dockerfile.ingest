@@ -11,12 +11,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install Python deps (ingest extra includes torch, sentence-transformers, etc.)
-COPY pyproject.toml .
-RUN uv sync --extra ingest --no-dev --prerelease=allow
+# Install Python deps
+RUN uv venv && uv pip install --prerelease=allow \
+    "requests>=2.31" \
+    "langchain-text-splitters>=0.2" \
+    "tqdm>=4.66" \
+    "sentence-transformers>=3.0" \
+    "torch>=2.0" \
+    --extra-index-url https://download.pytorch.org/whl/nightly/cu128
 
 # Pre-download pinned model weights into the image
-RUN uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-large-en-v1.5', revision='d4aa6901d3a41ba39fb536a557fa166f842b0e09')"
+RUN .venv/bin/python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-large-en-v1.5', revision='d4aa6901d3a41ba39fb536a557fa166f842b0e09')"
 
 # No HuggingFace network calls at runtime
 ENV HF_HUB_OFFLINE=1
@@ -34,4 +39,4 @@ COPY client/__init__.py client/__init__.py
 RUN chown -R appuser:appuser /app
 USER appuser
 
-ENTRYPOINT ["uv", "run", "python", "-m", "client.ingest_remote"]
+ENTRYPOINT [".venv/bin/python", "-m", "client.ingest_remote"]
