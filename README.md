@@ -205,6 +205,29 @@ Parameters:
 - `offset` (optional, default 0): skip results for pagination
 - `dataset` (optional): filter to specific dataset number
 
+### GET /ingest/stats
+
+Embedded document and chunk counts. Requires `INGEST_API_KEY`.
+
+```bash
+# All datasets
+curl http://localhost:8000/ingest/stats \
+  -H "X-API-Key: $INGEST_API_KEY"
+
+# Specific dataset
+curl "http://localhost:8000/ingest/stats?dataset=9" \
+  -H "X-API-Key: $INGEST_API_KEY"
+```
+
+Response:
+
+```json
+{"dataset": 9, "documents": 435855, "chunks": 1840976}
+```
+
+Parameters:
+- `dataset` (optional): filter to specific dataset number
+
 ### GET /health
 
 ```bash
