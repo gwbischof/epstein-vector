@@ -251,6 +251,17 @@ docker run --gpus all \
   epstein-ingest
 ```
 
+To persist downloaded JSONL files between runs (avoids re-downloading), mount a volume to `/app/data`:
+
+```bash
+docker run --gpus all \
+  -e API_URL="https://vector.korroni.cloud" \
+  -e API_KEY="your-ingest-api-key" \
+  -e DATASETS="9" \
+  -v /path/to/storage:/app/data \
+  epstein-ingest
+```
+
 ### Environment variables
 
 | Variable | Description | Default |
