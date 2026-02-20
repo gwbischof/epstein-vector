@@ -108,6 +108,32 @@ def ingest_done(dataset: int | None = None, efta_id: str | None = None) -> DoneR
     return DoneResponse(efta_ids=ids, count=len(ids))
 
 
+@router.get("/ingest/stats")
+def ingest_stats(dataset: int | None = None):
+    """Return total embedded document and chunk counts, optionally filtered by dataset."""
+    pool = get_ingest_pool()
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            if dataset is not None:
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT c.efta_id) AS docs, COUNT(*) AS chunks
+                    FROM chunks c JOIN documents d ON d.efta_id = c.efta_id
+                    WHERE d.dataset = %s
+                    """,
+                    (dataset,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT COUNT(DISTINCT efta_id) AS docs, COUNT(*) AS chunks
+                    FROM chunks
+                    """,
+                )
+            row = cur.fetchone()
+    return {"dataset": dataset, "documents": row["docs"], "chunks": row["chunks"]}
+
+
 @router.post("/ingest")
 def ingest(req: IngestRequest) -> IngestResponse:
     """Accept batch of documents + chunks with pre-computed embeddings."""
