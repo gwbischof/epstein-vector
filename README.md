@@ -233,6 +233,14 @@ docker build -f Dockerfile.ingest -t epstein-ingest .
 
 First build downloads PyTorch + CUDA (~2GB) and model weights (~1.3GB) — expect 5-10 minutes. These layers are cached so rebuilds after code changes are fast.
 
+**Blackwell GPUs (RTX 50 series)** need PyTorch nightly with CUDA 12.8:
+
+```bash
+docker build -f Dockerfile.ingest -t epstein-ingest --build-arg TORCH_INDEX=nightly/cu128 .
+```
+
+The default (`cu118`) works for Pascal, Turing, and Ampere GPUs (GTX 10xx, RTX 20xx/30xx/40xx).
+
 ### Run
 
 ```bash

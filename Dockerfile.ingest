@@ -16,13 +16,16 @@ RUN chown appuser:appuser /app
 USER appuser
 
 # Install Python deps
+# TORCH_INDEX: use cu118 for older GPUs (Pascal, Turing, Ampere)
+#              use nightly/cu128 for Blackwell (RTX 50 series)
+ARG TORCH_INDEX=cu118
 RUN uv venv && uv pip install --prerelease=allow \
     "requests>=2.31" \
     "langchain-text-splitters>=0.2" \
     "tqdm>=4.66" \
     "sentence-transformers>=3.0" \
     "torch>=2.0" \
-    --extra-index-url https://download.pytorch.org/whl/nightly/cu128
+    --extra-index-url https://download.pytorch.org/whl/${TORCH_INDEX}
 
 # Pre-download pinned model weights into the image
 RUN .venv/bin/python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-large-en-v1.5', revision='d4aa6901d3a41ba39fb536a557fa166f842b0e09')"
