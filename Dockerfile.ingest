@@ -13,7 +13,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Install Python deps (ingest extra includes torch, sentence-transformers, etc.)
 COPY pyproject.toml .
-RUN uv sync --extra ingest --no-dev
+RUN uv sync --extra ingest --no-dev --prerelease=allow
 
 # Pre-download pinned model weights into the image
 RUN uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-large-en-v1.5', revision='d4aa6901d3a41ba39fb536a557fa166f842b0e09')"
