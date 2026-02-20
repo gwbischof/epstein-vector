@@ -48,3 +48,4 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-nightly-cu128" }
 torchvision = { index = "pytorch-nightly-cu128" }
+triton = { index = "pytorch-nightly-cu128" }
