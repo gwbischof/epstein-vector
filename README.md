@@ -359,24 +359,26 @@ Required secrets in a `deployment` environment:
 
 ## Backup & Restore
 
+Automated backups run every 3 days at 4am UTC via cron, saving compressed dumps to the NAS at `/mnt/nas/backups/epstein-vector/`. The 3 most recent backups are kept.
+
+### Manual backup
+
 ```bash
-# Dump (SQL)
-docker exec epstein-vector-pg pg_dump -U epstein epstein > backup.sql
+# Compressed backup to NAS
+ssh root@korroni.cloud "docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein | gzip > /mnt/nas/backups/epstein-vector/epstein-\$(date +%Y%m%d-%H%M%S).dump.gz"
 
-# Restore (SQL)
-docker exec -i epstein-vector-pg psql -U epstein epstein < backup.sql
-
-# Dump (binary — faster for large DBs with vectors)
-docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein > backup.dump
-
-# Restore (binary)
-docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean < backup.dump
+# Local backup
+ssh root@korroni.cloud "docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein" > backup.dump
 ```
 
-For remote servers, prefix with `ssh user@host`:
+### Restore
 
 ```bash
-ssh deploy@yourserver "docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein" > backup.dump
+# From compressed backup
+gunzip -c backup.dump.gz | docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean
+
+# From binary dump
+docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean < backup.dump
 ```
 
 ## Stack
