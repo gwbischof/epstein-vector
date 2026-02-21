@@ -93,7 +93,7 @@ jobs:
                 -e POSTGRES_DB=epstein \
                 -v epstein-vector-pgdata:/var/lib/postgresql/data \
                 pgvector/pgvector:pg17 \
-                -c shared_buffers=14GB \
+                -c shared_buffers=16GB \
                 -c work_mem=256MB \
                 -c effective_cache_size=24GB \
                 -c maintenance_work_mem=1GB
