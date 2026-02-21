@@ -160,14 +160,19 @@ jobs:
               exit 1
             fi
 
-            # Backup Postgres to NAS before cleaning up
+            # Backup Postgres to NAS
             echo "Backing up Postgres to NAS..."
             BACKUP_FILE="/mnt/nas/backups/epstein-vector/epstein-$(date +%Y%m%d-%H%M%S).dump"
             docker exec "$PG_CONTAINER" pg_dump -U epstein -Fc epstein > "$BACKUP_FILE"
             echo "Backup saved: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
 
-            # Keep only the 3 most recent backups
-            ls -t /mnt/nas/backups/epstein-vector/epstein-*.dump | tail -n +4 | xargs rm -f 2>/dev/null || true
+            # Keep only the 5 most recent backups
+            ls -t /mnt/nas/backups/epstein-vector/epstein-*.dump | tail -n +6 | xargs rm -f 2>/dev/null || true
+
+            # Install cron job for backups every 3 days at 4am
+            CRON_CMD="0 4 */3 * * docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein > /mnt/nas/backups/epstein-vector/epstein-\$(date +\\%Y\\%m\\%d-\\%H\\%M\\%S).dump && ls -t /mnt/nas/backups/epstein-vector/epstein-*.dump | tail -n +6 | xargs rm -f 2>/dev/null"
+            (crontab -l 2>/dev/null | grep -v "epstein-vector"; echo "$CRON_CMD") | crontab -
+            echo "Cron backup installed (every 3 days at 4am)"
 
             # Clean up old images
             echo "Cleaning up old images..."
