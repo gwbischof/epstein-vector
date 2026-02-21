@@ -21,7 +21,9 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://epstein_reader:${READER_PASSWORD:-epstein}@epstein-vector-pg:5432/epstein
+      INGEST_DATABASE_URL: postgresql://epstein:${POSTGRES_PASSWORD:-epstein}@epstein-vector-pg:5432/epstein
       API_KEY: ${API_KEY:-}
+      INGEST_API_KEY: ${INGEST_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
