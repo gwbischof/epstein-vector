@@ -160,6 +160,15 @@ jobs:
               exit 1
             fi
 
+            # Backup Postgres to NAS before cleaning up
+            echo "Backing up Postgres to NAS..."
+            BACKUP_FILE="/mnt/nas/backups/epstein-vector/epstein-$(date +%Y%m%d-%H%M%S).dump"
+            docker exec "$PG_CONTAINER" pg_dump -U epstein -Fc epstein > "$BACKUP_FILE"
+            echo "Backup saved: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+
+            # Keep only the 3 most recent backups
+            ls -t /mnt/nas/backups/epstein-vector/epstein-*.dump | tail -n +4 | xargs rm -f 2>/dev/null || true
+
             # Clean up old images
             echo "Cleaning up old images..."
             docker image prune -af
