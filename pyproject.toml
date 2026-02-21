@@ -6,17 +6,6 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-server = [
-    "bentoml>=1.2",
-    "sentence-transformers>=3.0",
-    "torch>=2.0",
-]
-client = [
-    "requests>=2.31",
-    "psycopg[binary]>=3.1",
-    "langchain-text-splitters>=0.2",
-    "tqdm>=4.66",
-]
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",

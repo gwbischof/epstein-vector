@@ -5,137 +5,56 @@ Semantic search over ~1M DOJ Epstein Library documents using pgvector.
 ## Architecture
 
 ```
-Bulk Job (one-time):
-  Download JSONL → Chunk text → Embed on GPU → Insert into Postgres
+Ingestion (one-time, distributed across contributor GPUs):
+  Download JSONL → Chunk text → Embed on GPU → POST to API → Insert into Postgres
 
-Production:
-  User query → FastAPI → embed query on CPU → pgvector search → return results
+Search (production):
+  User query → FastAPI → Embed on CPU → pgvector search → Return results
 ```
 
-## Setup
-
-### Embedding Server (GPU)
+## API
 
 ```bash
-uv sync --extra server
-bentoml serve server.service:EmbeddingService --port 8200
-```
-
-Loads bge-large-en-v1.5 on both GPUs and round-robins batches between them. Edit `server/service.py` to adjust GPU count.
-
-### Bulk Ingestion
-
-Ingestion populates the database. It downloads the JSONL source files, chunks each document into ~200 word pieces, sends them to the GPU server for embedding, and inserts the vectors into Postgres. Ingestion is resumable — it skips documents that already have embeddings in the database, so you can safely re-run after a crash or interruption.
-
-```bash
-uv sync --extra client
-
-# Ingest specific datasets
-python -m client.ingest --datasets 1 2 3
-
-# All 12 datasets
-python -m client.ingest
-
-# Custom embed server / DB
-python -m client.ingest \
-  --embed-server http://192.168.1.100:8200 \
-  --db-url postgresql://epstein:password@localhost:5432/epstein
-```
-
-**Remote ingestion via SSH tunnel** — if Postgres is on a remote server (not exposed publicly), tunnel through SSH and point the ingest at localhost:
-
-```bash
-# Terminal 1: open tunnel to remote Postgres
-ssh -L 5433:epstein-vector-pg:5432 user@yourserver
-
-# Terminal 2: run ingestion through the tunnel
-python -m client.ingest \
-  --db-url postgresql://epstein:password@localhost:5433/epstein \
-  --embed-server http://gpu-machine:8200 \
-  --reader-password 'reader-password-here'
-```
-
-The `--reader-password` flag creates a read-only `epstein_reader` Postgres role that the API uses. This ensures the public-facing API can only `SELECT`, never modify data.
-
-### API
-
-```bash
-# Start Postgres + API
+# Start with Docker
 docker compose up -d
 
-# Or run API directly
+# Or run directly
 uv sync --extra api
 DATABASE_URL=postgresql://epstein:epstein@localhost:5432/epstein uvicorn api.main:app --reload
 ```
 
-Set `API_KEY` env var to require authentication. If unset, all endpoints are open.
+Set `API_KEY` to require authentication. If unset, all endpoints are open.
 
-## API Reference
+### Endpoints
 
-### POST /vector_search
+All search endpoints accept `POST` with JSON body and require `X-API-Key` header.
+
+**Common parameters** (all endpoints):
+- `limit` (default 20, max 100): number of results
+- `offset` (default 0): skip results for pagination
+- `dataset` (optional): filter to specific dataset number
+
+#### POST /vector_search
 
 Semantic search — finds documents by meaning.
 
 ```bash
 curl -X POST http://localhost:8000/vector_search \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"query": "flight logs", "limit": 10, "dataset": 9}'
 ```
 
-Response:
-
-```json
-{
-  "query": "flight logs",
-  "results": [
-    {
-      "efta_id": "EFTA00123456",
-      "dataset": 9,
-      "chunk_index": 0,
-      "total_chunks": 3,
-      "text": "[EFTA00123456 | Dataset 9] ...",
-      "score": 0.87
-    }
-  ]
-}
-```
-
-Parameters:
-- `query` (required): search text
-- `limit` (optional, default 20, max 100): number of results
-- `offset` (optional, default 0): skip results for pagination
-- `dataset` (optional): filter to specific dataset number
-
-### POST /text_search
+#### POST /text_search
 
 Full-text keyword search — finds exact word matches.
 
 ```bash
 curl -X POST http://localhost:8000/text_search \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Maxwell flight", "limit": 10, "dataset": 9}'
+  -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "Maxwell flight", "limit": 10}'
 ```
 
-Response:
-
-```json
-{
-  "query": "Maxwell flight",
-  "results": [
-    {
-      "efta_id": "EFTA00123456",
-      "dataset": 9,
-      "word_count": 450,
-      "rank": 0.075,
-      "headline": "...traveled with <b>Maxwell</b> on a <b>flight</b> to..."
-    }
-  ]
-}
-```
-
-Keyword search supports several query syntaxes:
+Query syntax:
 
 | Syntax | Example | Behavior |
 |---|---|---|
@@ -145,90 +64,40 @@ Keyword search supports several query syntaxes:
 | NOT | `island -vacation` | Exclude a term |
 | Wildcard | `maxw*` | Prefix match |
 
-Parameters:
-- `query` (required): search text
-- `limit` (optional, default 20, max 100): number of results
-- `offset` (optional, default 0): skip results for pagination
-- `dataset` (optional): filter to specific dataset number
+#### POST /fuzzy_search
 
-### POST /fuzzy_search
-
-Fuzzy trigram search — typo-tolerant matching for OCR errors and misspellings.
+Trigram search — typo-tolerant matching for OCR errors and misspellings.
 
 ```bash
 curl -X POST http://localhost:8000/fuzzy_search \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"query": "Maxwel", "limit": 10}'
 ```
 
-Response:
+Additional parameter: `exclude_exact` (default false) — exclude documents that keyword search already matches.
 
-```json
-{
-  "query": "Maxwel",
-  "results": [
-    {
-      "efta_id": "EFTA00123456",
-      "dataset": 9,
-      "chunk_index": 2,
-      "total_chunks": 5,
-      "text": "[EFTA00123456 | Dataset 9] ...traveled with Maxwell on a flight to...",
-      "similarity": 0.72
-    }
-  ]
-}
-```
-
-Parameters:
-- `query` (required): search text
-- `limit` (optional, default 20, max 100): number of results
-- `offset` (optional, default 0): skip results for pagination
-- `dataset` (optional): filter to specific dataset number
-- `exclude_exact` (optional, default false): exclude documents that keyword search already matches, showing only fuzzy-only results
-
-### POST /similarity_search
+#### POST /similarity_search
 
 Find documents similar to a given chunk — uses the existing embedding without re-encoding.
 
 ```bash
 curl -X POST http://localhost:8000/similarity_search \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"efta_id": "EFTA00123456", "chunk_index": 0, "limit": 10}'
 ```
 
-Parameters:
-- `efta_id` (required): source document ID
-- `chunk_index` (optional, default 0): which chunk to use as the query vector
-- `limit` (optional, default 20, max 100): number of results
-- `offset` (optional, default 0): skip results for pagination
-- `dataset` (optional): filter to specific dataset number
+Additional parameters: `efta_id` (required), `chunk_index` (default 0).
 
-### GET /ingest/stats
+#### GET /ingest/stats
 
 Embedded document and chunk counts. Requires `INGEST_API_KEY`.
 
 ```bash
-# All datasets
-curl http://localhost:8000/ingest/stats \
-  -H "X-API-Key: $INGEST_API_KEY"
-
-# Specific dataset
-curl "http://localhost:8000/ingest/stats?dataset=9" \
-  -H "X-API-Key: $INGEST_API_KEY"
+curl http://localhost:8000/ingest/stats -H "X-API-Key: $INGEST_API_KEY"
+curl "http://localhost:8000/ingest/stats?dataset=9" -H "X-API-Key: $INGEST_API_KEY"
 ```
 
-Response:
-
-```json
-{"dataset": 9, "documents": 435855, "chunks": 1840976}
-```
-
-Parameters:
-- `dataset` (optional): filter to specific dataset number
-
-### GET /health
+#### GET /health
 
 ```bash
 curl http://localhost:8000/health
@@ -236,7 +105,7 @@ curl http://localhost:8000/health
 
 ## Distributed GPU Ingestion
 
-Contributors can run a Docker container on their own GPU to help embed documents. The container downloads source data, embeds locally, and uploads results to the API — no database credentials needed.
+Contributors run a Docker container on their own GPU to embed documents. The container downloads source data, embeds locally, and uploads results to the API — no database credentials needed.
 
 ```
 Container (your GPU)                 Server (vector.korroni.cloud)
@@ -248,13 +117,13 @@ Container (your GPU)                 Server (vector.korroni.cloud)
 6. Repeat until done
 ```
 
-### Build the container
+### Build
 
 ```bash
 docker build -f Dockerfile.ingest -t epstein-ingest .
 ```
 
-First build downloads PyTorch + CUDA (~2GB) and model weights (~1.3GB) — expect 5-10 minutes. These layers are cached so rebuilds after code changes are fast.
+First build downloads PyTorch + CUDA (~2GB) and model weights (~1.3GB) — expect 5-10 minutes. Rebuilds after code changes are fast (cached layers).
 
 **Blackwell GPUs (RTX 50 series)** need PyTorch nightly with CUDA 12.8:
 
@@ -274,7 +143,7 @@ docker run --gpus all \
   epstein-ingest
 ```
 
-To persist downloaded JSONL files between runs (avoids re-downloading), mount a volume to `/app/data`:
+To persist downloaded JSONL files between runs (avoids re-downloading), mount a volume:
 
 ```bash
 docker run --gpus all \
@@ -285,7 +154,24 @@ docker run --gpus all \
   epstein-ingest
 ```
 
-### Environment variables
+### Multi-GPU
+
+`--gpus all` makes GPUs visible to the container. `CUDA_DEVICES` controls which ones the worker uses.
+
+```bash
+# Both GPUs in one container
+docker run --gpus all -e CUDA_DEVICES="0,1" -e API_KEY="key" -e DATASETS="9" epstein-ingest
+
+# Or separate containers per GPU
+docker run --gpus all -e CUDA_DEVICES="0" -e API_KEY="key" -e DATASETS="9" epstein-ingest
+docker run --gpus all -e CUDA_DEVICES="1" -e API_KEY="key" -e DATASETS="9" epstein-ingest
+```
+
+### Resumability
+
+The worker checks `/ingest/done` before processing each dataset and skips already-embedded documents. You can kill and restart at any time. Multiple workers on the same dataset are safe — `ON CONFLICT DO NOTHING` handles overlap.
+
+### Container environment variables
 
 | Variable | Description | Default |
 |---|---|---|
@@ -294,57 +180,30 @@ docker run --gpus all \
 | `DATASETS` | Comma-separated dataset numbers | `1,2,3,4,5,6,7,8,9,10,11,12` |
 | `CUDA_DEVICES` | GPU indices, or `cpu` | `0` |
 
-### Multi-GPU
-
-`--gpus all` makes GPUs visible to the container (required). `CUDA_DEVICES` controls which ones the worker uses.
-
-Load the model on both GPUs in one container:
-
-```bash
-docker run --gpus all \
-  -e CUDA_DEVICES="0,1" \
-  -e DATASETS="9,10,11,12" \
-  -e API_KEY="your-ingest-api-key" \
-  epstein-ingest
-```
-
-Or run separate containers per GPU — simpler and they naturally avoid duplicate work:
-
-```bash
-docker run --gpus all -e CUDA_DEVICES="0" -e API_KEY="your-ingest-api-key" -e DATASETS="9" epstein-ingest
-docker run --gpus all -e CUDA_DEVICES="1" -e API_KEY="your-ingest-api-key" -e DATASETS="9" epstein-ingest
-```
-
-### Resumability
-
-The worker checks `/ingest/done` before processing each dataset and skips already-embedded documents. You can kill and restart at any time. Multiple workers on the same dataset are safe — `ON CONFLICT DO NOTHING` handles overlap.
-
 ## Web Frontend
 
 A search UI at `web/` — Next.js with semantic + keyword search, infinite scroll, similarity search, and links to DOJ source PDFs.
 
 ```bash
-cd web
-npm install
-npm run dev
+cd web && npm install && npm run dev
 ```
 
 The frontend calls the API directly from the browser (same domain via Traefik path routing). Users enter an API key which is stored in localStorage.
 
-## Environment Variables
+## Deployment
+
+The GitHub Actions workflow (`.github/workflows/deploy.yml`) builds a Docker image, pushes to GHCR, and deploys via SSH. It expects a Traefik reverse proxy for TLS.
+
+### Server environment variables
 
 | Variable | Description | Default |
 |---|---|---|
-| `DATABASE_URL` | Postgres connection string (read-only) | `postgresql://epstein_reader:epstein@localhost:5432/epstein` |
+| `DATABASE_URL` | Postgres connection string (read-only) | `postgresql://epstein_reader:...@localhost:5432/epstein` |
 | `INGEST_DATABASE_URL` | Postgres connection string (write) | *(none — ingestion disabled)* |
-| `API_KEY` | API key for search endpoints (optional) | *(none — no auth)* |
-| `INGEST_API_KEY` | API key for ingestion endpoints (optional) | *(none — no auth)* |
+| `API_KEY` | API key for search endpoints | *(none — no auth)* |
+| `INGEST_API_KEY` | API key for ingestion endpoints | *(none — no auth)* |
 
-## Deployment
-
-The included GitHub Actions workflow (`.github/workflows/deploy.yml`) builds a Docker image, pushes to GHCR, and deploys via SSH. It expects a Traefik reverse proxy for TLS.
-
-Required secrets in a `deployment` environment:
+### Required GitHub secrets (`deployment` environment)
 
 | Secret | Description |
 |---|---|
@@ -352,32 +211,26 @@ Required secrets in a `deployment` environment:
 | `DEPLOY_USER` | SSH user |
 | `DEPLOY_SSH_KEY` | SSH private key |
 | `DOCKER_NETWORK` | Docker network (for Traefik) |
-| `POSTGRES_PASSWORD` | Postgres admin password (for ingestion) |
-| `READER_PASSWORD` | Postgres read-only password (used by API) |
-| `API_KEY` | API authentication key (search endpoints) |
-| `INGEST_API_KEY` | API authentication key (ingestion endpoints) |
+| `POSTGRES_PASSWORD` | Postgres admin password |
+| `READER_PASSWORD` | Postgres read-only password |
+| `API_KEY` | Search API key |
+| `INGEST_API_KEY` | Ingestion API key |
 
 ## Backup & Restore
 
-Automated backups run every 3 days at 4am UTC via cron, saving compressed dumps to the NAS at `/mnt/nas/backups/epstein-vector/`. The 3 most recent backups are kept.
-
-### Manual backup
+Automated backups run every 3 days at 4am UTC via cron, saving compressed dumps to `/mnt/nas/backups/epstein-vector/`. The 3 most recent backups are kept.
 
 ```bash
-# Compressed backup to NAS
+# Manual backup to NAS
 ssh root@korroni.cloud "docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein | gzip > /mnt/nas/backups/epstein-vector/epstein-\$(date +%Y%m%d-%H%M%S).dump.gz"
 
 # Local backup
 ssh root@korroni.cloud "docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein" > backup.dump
-```
 
-### Restore
-
-```bash
-# From compressed backup
+# Restore (compressed)
 gunzip -c backup.dump.gz | docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean
 
-# From binary dump
+# Restore (binary)
 docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean < backup.dump
 ```
 
@@ -387,5 +240,5 @@ docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean < back
 - **Vector DB**: Postgres 17 + pgvector (halfvec for 50% storage savings)
 - **Chunking**: ~200 words per chunk, 30 word overlap, contextual prefix, OCR quality filter (alpha ratio >50%)
 - **Web UI**: Next.js 15, Tailwind v4, Framer Motion
-- **API**: FastAPI + uvicorn
-- **GPU server**: BentoML (tested on 2x GTX 1080Ti)
+- **API**: FastAPI + uvicorn (4 workers)
+- **GPU ingestion**: Distributed Docker containers (tested on GTX 1080 Ti, RTX 3070, RTX PRO 6000)
