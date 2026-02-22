@@ -3,6 +3,7 @@ services:
     image: pgvector/pgvector:pg17
     container_name: epstein-vector-pg
     restart: unless-stopped
+    shm_size: 1g
     environment:
       POSTGRES_USER: epstein
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-epstein}
