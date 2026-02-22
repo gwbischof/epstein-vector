@@ -11,11 +11,9 @@ export async function vectorSearch(
   apiKey: string,
   limit: number = 20,
   offset: number = 0,
-  dataset?: number | null,
   signal?: AbortSignal,
 ): Promise<VectorSearchResponse> {
   const body: Record<string, unknown> = { query, limit, offset };
-  if (dataset != null) body.dataset = dataset;
 
   const res = await fetch(`${BASE_URL}/vector_search`, {
     method: "POST",
@@ -40,11 +38,9 @@ export async function textSearch(
   apiKey: string,
   limit: number = 20,
   offset: number = 0,
-  dataset?: number | null,
   signal?: AbortSignal,
 ): Promise<TextSearchResponse> {
   const body: Record<string, unknown> = { query, limit, offset };
-  if (dataset != null) body.dataset = dataset;
 
   const res = await fetch(`${BASE_URL}/text_search`, {
     method: "POST",
@@ -69,12 +65,10 @@ export async function fuzzySearch(
   apiKey: string,
   limit: number = 20,
   offset: number = 0,
-  dataset?: number | null,
   excludeExact?: boolean,
   signal?: AbortSignal,
 ): Promise<FuzzySearchResponse> {
   const body: Record<string, unknown> = { query, limit, offset };
-  if (dataset != null) body.dataset = dataset;
   if (excludeExact) body.exclude_exact = true;
 
   const res = await fetch(`${BASE_URL}/fuzzy_search`, {
@@ -101,11 +95,9 @@ export async function similarSearch(
   apiKey: string,
   limit: number = 20,
   offset: number = 0,
-  dataset?: number | null,
   signal?: AbortSignal,
 ): Promise<VectorSearchResponse> {
   const body: Record<string, unknown> = { efta_id: eftaId, chunk_index: chunkIndex, limit, offset };
-  if (dataset != null) body.dataset = dataset;
 
   const res = await fetch(`${BASE_URL}/similarity_search`, {
     method: "POST",

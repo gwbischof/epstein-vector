@@ -24,7 +24,6 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
-    dataset: int | None = None
 
 
 class ChunkResult(BaseModel):
@@ -57,27 +56,15 @@ def search(req: SearchRequest) -> SearchResponse:
 
     pool = get_pool()
 
-    if req.dataset is not None:
-        sql = """
-            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
-                   1 - (c.embedding <=> %s::halfvec) AS score
-            FROM chunks c
-            JOIN documents d ON d.efta_id = c.efta_id
-            WHERE d.dataset = %s
-            ORDER BY c.embedding <=> %s::halfvec
-            LIMIT %s OFFSET %s
-        """
-        params = (vec_str, req.dataset, vec_str, req.limit, req.offset)
-    else:
-        sql = """
-            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
-                   1 - (c.embedding <=> %s::halfvec) AS score
-            FROM chunks c
-            JOIN documents d ON d.efta_id = c.efta_id
-            ORDER BY c.embedding <=> %s::halfvec
-            LIMIT %s OFFSET %s
-        """
-        params = (vec_str, vec_str, req.limit, req.offset)
+    sql = """
+        SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
+               1 - (c.embedding <=> %s::halfvec) AS score
+        FROM chunks c
+        JOIN documents d ON d.efta_id = c.efta_id
+        ORDER BY c.embedding <=> %s::halfvec
+        LIMIT %s OFFSET %s
+    """
+    params = (vec_str, vec_str, req.limit, req.offset)
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -103,7 +90,6 @@ class TextSearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
-    dataset: int | None = None
 
 
 class TextResult(BaseModel):
@@ -182,44 +168,23 @@ def text_search(req: TextSearchRequest) -> TextSearchResponse:
         tsquery_expr = "websearch_to_tsquery('english', %s)"
         query_param = req.query
 
-    if req.dataset is not None:
-        sql = f"""
-            SELECT efta_id, dataset, word_count,
-                   ts_rank(tsv, {tsquery_expr}) AS rank,
-                   ts_headline('english', text, {tsquery_expr},
-                               'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
-            FROM documents
-            WHERE tsv @@ {tsquery_expr} AND dataset = %s
-            ORDER BY rank DESC
-            LIMIT %s OFFSET %s
-        """
-        params = (query_param, query_param, query_param, req.dataset, req.limit, req.offset)
-    else:
-        sql = f"""
-            SELECT efta_id, dataset, word_count,
-                   ts_rank(tsv, {tsquery_expr}) AS rank,
-                   ts_headline('english', text, {tsquery_expr},
-                               'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
-            FROM documents
-            WHERE tsv @@ {tsquery_expr}
-            ORDER BY rank DESC
-            LIMIT %s OFFSET %s
-        """
-        params = (query_param, query_param, query_param, req.limit, req.offset)
+    sql = f"""
+        SELECT efta_id, dataset, word_count,
+               ts_rank(tsv, {tsquery_expr}) AS rank,
+               ts_headline('english', text, {tsquery_expr},
+                           'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
+        FROM documents
+        WHERE tsv @@ {tsquery_expr}
+        ORDER BY rank DESC
+        LIMIT %s OFFSET %s
+    """
+    params = (query_param, query_param, query_param, req.limit, req.offset)
 
-    # Count query (same WHERE, no ORDER/LIMIT)
-    if req.dataset is not None:
-        count_sql = f"""
-            SELECT count(*) FROM documents
-            WHERE tsv @@ {tsquery_expr} AND dataset = %s
-        """
-        count_params = (query_param, req.dataset)
-    else:
-        count_sql = f"""
-            SELECT count(*) FROM documents
-            WHERE tsv @@ {tsquery_expr}
-        """
-        count_params = (query_param,)
+    count_sql = f"""
+        SELECT count(*) FROM documents
+        WHERE tsv @@ {tsquery_expr}
+    """
+    count_params = (query_param,)
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -246,7 +211,6 @@ class FuzzySearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
-    dataset: int | None = None
     exclude_exact: bool = Field(default=False, description="Exclude documents that match via keyword search")
 
 
@@ -292,44 +256,23 @@ def fuzzy_search(req: FuzzySearchRequest) -> FuzzySearchResponse:
         exclude_clause = " AND NOT d.tsv @@ websearch_to_tsquery('english', %s)"
         exclude_params = (req.query,)
 
-    if req.dataset is not None:
-        sql = f"""
-            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
-                   word_similarity(%s, c.text) AS sim
-            FROM chunks c
-            JOIN documents d ON d.efta_id = c.efta_id
-            WHERE %s <%% c.text AND d.dataset = %s{exclude_clause}
-            ORDER BY sim DESC
-            LIMIT %s OFFSET %s
-        """
-        params = (req.query, req.query, req.dataset) + exclude_params + (req.limit, req.offset)
-    else:
-        sql = f"""
-            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
-                   word_similarity(%s, c.text) AS sim
-            FROM chunks c
-            JOIN documents d ON d.efta_id = c.efta_id
-            WHERE %s <%% c.text{exclude_clause}
-            ORDER BY sim DESC
-            LIMIT %s OFFSET %s
-        """
-        params = (req.query, req.query) + exclude_params + (req.limit, req.offset)
+    sql = f"""
+        SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
+               word_similarity(%s, c.text) AS sim
+        FROM chunks c
+        JOIN documents d ON d.efta_id = c.efta_id
+        WHERE %s <%% c.text{exclude_clause}
+        ORDER BY sim DESC
+        LIMIT %s OFFSET %s
+    """
+    params = (req.query, req.query) + exclude_params + (req.limit, req.offset)
 
-    # Count query (same WHERE, no ORDER/LIMIT)
-    if req.dataset is not None:
-        count_sql = f"""
-            SELECT count(*) FROM chunks c
-            JOIN documents d ON d.efta_id = c.efta_id
-            WHERE %s <%% c.text AND d.dataset = %s{exclude_clause}
-        """
-        count_params = (req.query, req.dataset) + exclude_params
-    else:
-        count_sql = f"""
-            SELECT count(*) FROM chunks c
-            JOIN documents d ON d.efta_id = c.efta_id
-            WHERE %s <%% c.text{exclude_clause}
-        """
-        count_params = (req.query,) + exclude_params
+    count_sql = f"""
+        SELECT count(*) FROM chunks c
+        JOIN documents d ON d.efta_id = c.efta_id
+        WHERE %s <%% c.text{exclude_clause}
+    """
+    count_params = (req.query,) + exclude_params
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -358,7 +301,6 @@ class SimilarRequest(BaseModel):
     chunk_index: int = Field(default=0, ge=0)
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
-    dataset: int | None = None
 
 
 def similar(req: SimilarRequest) -> SearchResponse:
@@ -380,29 +322,16 @@ def similar(req: SimilarRequest) -> SearchResponse:
     vec_str = str(row["embedding"])
 
     # Find nearest neighbors, excluding the source chunk itself
-    if req.dataset is not None:
-        sql = """
-            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
-                   1 - (c.embedding <=> %s::halfvec) AS score
-            FROM chunks c
-            JOIN documents d ON d.efta_id = c.efta_id
-            WHERE d.dataset = %s
-              AND NOT (c.efta_id = %s AND c.chunk_index = %s)
-            ORDER BY c.embedding <=> %s::halfvec
-            LIMIT %s OFFSET %s
-        """
-        params = (vec_str, req.dataset, req.efta_id, req.chunk_index, vec_str, req.limit, req.offset)
-    else:
-        sql = """
-            SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
-                   1 - (c.embedding <=> %s::halfvec) AS score
-            FROM chunks c
-            JOIN documents d ON d.efta_id = c.efta_id
-            WHERE NOT (c.efta_id = %s AND c.chunk_index = %s)
-            ORDER BY c.embedding <=> %s::halfvec
-            LIMIT %s OFFSET %s
-        """
-        params = (vec_str, req.efta_id, req.chunk_index, vec_str, req.limit, req.offset)
+    sql = """
+        SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
+               1 - (c.embedding <=> %s::halfvec) AS score
+        FROM chunks c
+        JOIN documents d ON d.efta_id = c.efta_id
+        WHERE NOT (c.efta_id = %s AND c.chunk_index = %s)
+        ORDER BY c.embedding <=> %s::halfvec
+        LIMIT %s OFFSET %s
+    """
+    params = (vec_str, req.efta_id, req.chunk_index, vec_str, req.limit, req.offset)
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
