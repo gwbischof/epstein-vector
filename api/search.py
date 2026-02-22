@@ -180,18 +180,10 @@ def text_search(req: TextSearchRequest) -> TextSearchResponse:
     """
     params = (query_param, query_param, query_param, req.limit, req.offset)
 
-    count_sql = f"""
-        SELECT count(*) FROM documents
-        WHERE tsv @@ {tsquery_expr}
-    """
-    count_params = (query_param,)
-
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
-            cur.execute(count_sql, count_params)
-            total = cur.fetchone()["count"]
 
     results = [
         TextResult(
@@ -204,7 +196,7 @@ def text_search(req: TextSearchRequest) -> TextSearchResponse:
         for row in rows
     ]
 
-    return TextSearchResponse(query=req.query, total=total, results=results)
+    return TextSearchResponse(query=req.query, results=results)
 
 
 class FuzzySearchRequest(BaseModel):
@@ -267,19 +259,10 @@ def fuzzy_search(req: FuzzySearchRequest) -> FuzzySearchResponse:
     """
     params = (req.query, req.query) + exclude_params + (req.limit, req.offset)
 
-    count_sql = f"""
-        SELECT count(*) FROM chunks c
-        JOIN documents d ON d.efta_id = c.efta_id
-        WHERE %s <%% c.text{exclude_clause}
-    """
-    count_params = (req.query,) + exclude_params
-
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
-            cur.execute(count_sql, count_params)
-            total = cur.fetchone()["count"]
 
     results = [
         FuzzyResult(
@@ -293,7 +276,7 @@ def fuzzy_search(req: FuzzySearchRequest) -> FuzzySearchResponse:
         for row in rows
     ]
 
-    return FuzzySearchResponse(query=req.query, total=total, results=results)
+    return FuzzySearchResponse(query=req.query, results=results)
 
 
 class SimilarRequest(BaseModel):
