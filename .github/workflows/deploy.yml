@@ -88,6 +88,7 @@ jobs:
                 --name "$PG_CONTAINER" \
                 --restart unless-stopped \
                 --network "$NETWORK" \
+                --shm-size=1g \
                 -e POSTGRES_USER=epstein \
                 -e POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
                 -e POSTGRES_DB=epstein \
