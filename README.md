@@ -221,17 +221,11 @@ The GitHub Actions workflow (`.github/workflows/deploy.yml`) builds a Docker ima
 Automated backups run every 3 days at 4am UTC via cron, saving compressed dumps to `/mnt/nas/backups/epstein-vector/`. The 3 most recent backups are kept.
 
 ```bash
-# Manual backup to NAS
-ssh root@korroni.cloud "docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein | gzip > /mnt/nas/backups/epstein-vector/epstein-\$(date +%Y%m%d-%H%M%S).dump.gz"
+# Manual backup (run on the server)
+docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein | gzip > epstein-backup.dump.gz
 
-# Local backup
-ssh root@korroni.cloud "docker exec epstein-vector-pg pg_dump -U epstein -Fc epstein" > backup.dump
-
-# Restore (compressed)
-gunzip -c backup.dump.gz | docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean
-
-# Restore (binary)
-docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean < backup.dump
+# Restore
+gunzip -c epstein-backup.dump.gz | docker exec -i epstein-vector-pg pg_restore -U epstein -d epstein --clean
 ```
 
 ## Stack
