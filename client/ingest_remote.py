@@ -194,7 +194,9 @@ def ingest_dataset(
                 chunkable_docs.append(doc)
 
         if not all_chunks:
-            logger.info(f"Batch {batch_num}: no chunkable docs, skipping ({remaining} remaining)")
+            # Still upload docs so they're marked as "done" and not reprocessed
+            logger.info(f"Batch {batch_num}: no chunkable docs, uploading docs only ({remaining} remaining)")
+            post_batch(batch_docs, [], [], session)
             continue
 
         # Embed all chunks on local GPU(s)

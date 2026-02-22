@@ -73,14 +73,13 @@ def ingest_done(dataset: int | None = None, efta_id: str | None = None) -> DoneR
     if efta_id is not None:
         if dataset is not None:
             sql = """
-                SELECT 1 FROM chunks c
-                JOIN documents d ON d.efta_id = c.efta_id
-                WHERE c.efta_id = %s AND d.dataset = %s
+                SELECT 1 FROM documents
+                WHERE efta_id = %s AND dataset = %s
                 LIMIT 1
             """
             params = (efta_id, dataset)
         else:
-            sql = "SELECT 1 FROM chunks WHERE efta_id = %s LIMIT 1"
+            sql = "SELECT 1 FROM documents WHERE efta_id = %s LIMIT 1"
             params = (efta_id,)
 
         with pool.connection() as conn:
@@ -94,12 +93,7 @@ def ingest_done(dataset: int | None = None, efta_id: str | None = None) -> DoneR
     if dataset is None:
         raise HTTPException(status_code=400, detail="Provide dataset or efta_id parameter")
 
-    sql = """
-        SELECT DISTINCT c.efta_id
-        FROM chunks c
-        JOIN documents d ON d.efta_id = c.efta_id
-        WHERE d.dataset = %s
-    """
+    sql = "SELECT efta_id FROM documents WHERE dataset = %s"
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (dataset,))
