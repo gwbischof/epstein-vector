@@ -201,14 +201,37 @@ def ingest_dataset(
         logger.info(f"Batch {batch_num}: embedding {len(all_chunks)} chunks from {len(chunkable_docs)} docs ({remaining} remaining)...")
         embeddings = embed_chunks(models, all_chunks)
 
-        # POST to API
-        logger.info(f"Batch {batch_num}: uploading...")
-        result = post_batch(batch_docs, all_chunks, embeddings, session)
-        total_chunks += len(all_chunks)
-        logger.info(
-            f"Batch {batch_num}: done — "
-            f"{result.get('inserted_documents', 0)} docs, {result.get('inserted_chunks', 0)} chunks"
-        )
+        # POST to API in sub-batches to avoid overwhelming the server
+        MAX_CHUNKS_PER_POST = 500
+        logger.info(f"Batch {batch_num}: uploading {len(all_chunks)} chunks...")
+        if len(all_chunks) <= MAX_CHUNKS_PER_POST:
+            result = post_batch(batch_docs, all_chunks, embeddings, session)
+            total_chunks += len(all_chunks)
+            logger.info(
+                f"Batch {batch_num}: done — "
+                f"{result.get('inserted_documents', 0)} docs, {result.get('inserted_chunks', 0)} chunks"
+            )
+        else:
+            # Split chunks into smaller uploads; send documents only with the first sub-batch
+            inserted_docs = 0
+            inserted_chunks = 0
+            for sub_start in range(0, len(all_chunks), MAX_CHUNKS_PER_POST):
+                sub_end = sub_start + MAX_CHUNKS_PER_POST
+                sub_chunks = all_chunks[sub_start:sub_end]
+                sub_embeddings = embeddings[sub_start:sub_end]
+                # Send documents only in the first sub-batch
+                sub_docs = batch_docs if sub_start == 0 else []
+                sub_num = sub_start // MAX_CHUNKS_PER_POST + 1
+                sub_total = (len(all_chunks) + MAX_CHUNKS_PER_POST - 1) // MAX_CHUNKS_PER_POST
+                logger.info(f"Batch {batch_num}: sub-batch {sub_num}/{sub_total} ({len(sub_chunks)} chunks)...")
+                result = post_batch(sub_docs, sub_chunks, sub_embeddings, session)
+                inserted_docs += result.get('inserted_documents', 0)
+                inserted_chunks += result.get('inserted_chunks', 0)
+            total_chunks += len(all_chunks)
+            logger.info(
+                f"Batch {batch_num}: done — "
+                f"{inserted_docs} docs, {inserted_chunks} chunks"
+            )
 
         # Re-check done list every 10 batches to skip work other workers completed
         if batch_num % 10 == 0 and new_docs:

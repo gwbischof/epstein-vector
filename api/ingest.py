@@ -147,6 +147,8 @@ def ingest(req: IngestRequest) -> IngestResponse:
 
     pool = get_ingest_pool()
 
+    DB_BATCH = 500  # max rows per executemany to limit memory/transaction size
+
     with pool.connection() as conn:
         with conn.cursor() as cur:
             # Insert documents first (chunks have FK to documents)
@@ -165,17 +167,17 @@ def ingest(req: IngestRequest) -> IngestResponse:
                     text,
                 ))
 
-            if doc_values:
+            for i in range(0, len(doc_values), DB_BATCH):
                 cur.executemany(
                     """
                     INSERT INTO documents (efta_id, dataset, url, pages, word_count, text)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (efta_id) DO NOTHING
                     """,
-                    doc_values,
+                    doc_values[i : i + DB_BATCH],
                 )
 
-            # Insert chunks with embeddings
+            # Insert chunks with embeddings in batches
             chunk_values = []
             for chunk in req.chunks:
                 vec_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
@@ -187,14 +189,14 @@ def ingest(req: IngestRequest) -> IngestResponse:
                     vec_str,
                 ))
 
-            if chunk_values:
+            for i in range(0, len(chunk_values), DB_BATCH):
                 cur.executemany(
                     """
                     INSERT INTO chunks (efta_id, chunk_index, total_chunks, text, embedding)
                     VALUES (%s, %s, %s, %s, %s::halfvec)
                     ON CONFLICT (efta_id, chunk_index) DO NOTHING
                     """,
-                    chunk_values,
+                    chunk_values[i : i + DB_BATCH],
                 )
 
         conn.commit()
