@@ -199,6 +199,51 @@ def text_search(req: TextSearchRequest) -> TextSearchResponse:
     return TextSearchResponse(query=req.query, results=results)
 
 
+class CountRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=2000)
+
+
+class CountResponse(BaseModel):
+    query: str
+    count: int
+
+
+def text_search_count(req: CountRequest) -> CountResponse:
+    """Count documents matching a full-text query."""
+    pool = get_pool()
+
+    use_wildcard = _has_wildcards(req.query)
+    if use_wildcard:
+        tsquery_expr = "to_tsquery('english', %s)"
+        query_param = _build_wildcard_tsquery(req.query)
+    else:
+        tsquery_expr = "websearch_to_tsquery('english', %s)"
+        query_param = req.query
+
+    sql = f"SELECT count(*) FROM documents WHERE tsv @@ {tsquery_expr}"
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (query_param,))
+            count = cur.fetchone()["count"]
+
+    return CountResponse(query=req.query, count=count)
+
+
+def fuzzy_search_count(req: CountRequest) -> CountResponse:
+    """Count chunks matching a fuzzy trigram query."""
+    pool = get_pool()
+
+    sql = "SELECT count(*) FROM chunks WHERE %s <%% text"
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (req.query,))
+            count = cur.fetchone()["count"]
+
+    return CountResponse(query=req.query, count=count)
+
+
 class FuzzySearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=20, ge=1, le=100)

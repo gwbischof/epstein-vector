@@ -85,6 +85,16 @@ def fuzzy_search_endpoint(req: search_module.FuzzySearchRequest) -> search_modul
     return search_module.fuzzy_search(req)
 
 
+@app.post("/text_search/count", dependencies=[Depends(verify_api_key)])
+def text_search_count_endpoint(req: search_module.CountRequest) -> search_module.CountResponse:
+    return search_module.text_search_count(req)
+
+
+@app.post("/fuzzy_search/count", dependencies=[Depends(verify_api_key)])
+def fuzzy_search_count_endpoint(req: search_module.CountRequest) -> search_module.CountResponse:
+    return search_module.fuzzy_search_count(req)
+
+
 @app.post("/similarity_search", dependencies=[Depends(verify_api_key)])
 def similarity_search_endpoint(req: search_module.SimilarRequest) -> search_module.SearchResponse:
     return search_module.similar(req)
