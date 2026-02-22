@@ -14,6 +14,7 @@ _pool: ConnectionPool | None = None
 
 def _configure_conn(conn):
     conn.execute("SET hnsw.ef_search = 100")
+    conn.commit()
 
 
 def get_pool() -> ConnectionPool:
