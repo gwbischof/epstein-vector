@@ -127,6 +127,7 @@ def ingest_documents(req: DocumentUpsertRequest) -> DocumentUpsertResponse:
             dataset=EXCLUDED.dataset, url=EXCLUDED.url, pages=EXCLUDED.pages,
             word_count=EXCLUDED.word_count, text=EXCLUDED.text, version=EXCLUDED.version
         WHERE EXCLUDED.version > documents.version
+           OR (EXCLUDED.version = documents.version AND EXCLUDED.word_count > documents.word_count)
     """
 
     with pool.connection() as conn:
