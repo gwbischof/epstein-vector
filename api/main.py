@@ -100,6 +100,6 @@ def similarity_search_endpoint(req: search_module.SimilarRequest) -> search_modu
     return search_module.similar(req)
 
 
-@app.get("/documents/{efta_id}", dependencies=[Depends(verify_api_key)])
+@app.get("/get_document/{efta_id}", dependencies=[Depends(verify_api_key)])
 def get_document_endpoint(efta_id: str) -> search_module.DocumentResponse:
     return search_module.get_document(efta_id)
