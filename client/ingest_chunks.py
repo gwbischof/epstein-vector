@@ -6,7 +6,8 @@ No download step needed — doc rows must already exist (loaded by ingest_docs.p
 Usage:
     python -m client.ingest_chunks
     python -m client.ingest_chunks --check         # verify and fix existing data first
-    python -m client.ingest_chunks --super-check   # compare text_hash, stamp or re-chunk
+    python -m client.ingest_chunks --super-check              # compare text_hash, stamp or re-chunk
+    python -m client.ingest_chunks --super-check --dry-run   # report what would change
 
 Environment variables:
     API_URL      - Base URL of the vector API (default: https://vector.korroni.cloud)
@@ -502,13 +503,15 @@ def super_check_dataset(
     dataset: int,
     models: list[BGEModel],
     session: requests.Session,
+    dry_run: bool = False,
 ) -> None:
     """Compare text_hash between documents and chunks, fix mismatches.
 
     For chunks missing doc_text_hash (NULL), fetches actual chunk texts and
     compares against expected. Stamps matching chunks, re-chunks mismatches.
     """
-    logger.info(f"=== Super-Check Dataset {dataset} ===")
+    mode = "DRY RUN" if dry_run else "LIVE"
+    logger.info(f"=== Super-Check Dataset {dataset} ({mode}) ===")
 
     all_ids = get_all_ids(dataset, session)
     logger.info(f"{len(all_ids)} documents to super-check")
@@ -595,27 +598,35 @@ def super_check_dataset(
 
         # Stamp matching chunks
         if to_stamp:
-            try:
-                stamp_hashes(to_stamp, session)
-                logger.info(f"Stamped {len(to_stamp)} docs' chunks")
-            except requests.RequestException as e:
-                logger.warning(f"Failed to stamp hashes: {e}")
+            if dry_run:
+                logger.info(f"[DRY RUN] Would stamp {len(to_stamp)} docs: {[s['efta_id'] for s in to_stamp[:5]]}{'...' if len(to_stamp) > 5 else ''}")
+            else:
+                try:
+                    stamp_hashes(to_stamp, session)
+                    logger.info(f"Stamped {len(to_stamp)} docs' chunks")
+                except requests.RequestException as e:
+                    logger.warning(f"Failed to stamp hashes: {e}")
 
         # Re-chunk and re-embed mismatches
         if to_rechunk:
-            all_chunks: list[Chunk] = []
-            batch_hashes: dict[str, str] = {}
-            for doc, chunks in to_rechunk:
-                all_chunks.extend(chunks)
-                if doc.get("text_hash"):
-                    batch_hashes[doc["efta_id"]] = doc["text_hash"]
+            rechunk_ids = [doc["efta_id"] for doc, _ in to_rechunk]
+            if dry_run:
+                for doc, chunks in to_rechunk:
+                    logger.info(f"[DRY RUN] Would re-chunk {doc['efta_id']} (word_count={doc.get('word_count', 0)}, {len(chunks)} chunks)")
+            else:
+                all_chunks: list[Chunk] = []
+                batch_hashes: dict[str, str] = {}
+                for doc, chunks in to_rechunk:
+                    all_chunks.extend(chunks)
+                    if doc.get("text_hash"):
+                        batch_hashes[doc["efta_id"]] = doc["text_hash"]
 
-            _process_and_post(
-                all_chunks, models, session,
-                overwrite=True,
-                label=f"Super-check fix batch {batch_start // BATCH_SIZE + 1}",
-                doc_text_hashes=batch_hashes,
-            )
+                _process_and_post(
+                    all_chunks, models, session,
+                    overwrite=True,
+                    label=f"Super-check fix batch {batch_start // BATCH_SIZE + 1}",
+                    doc_text_hashes=batch_hashes,
+                )
 
         if (batch_start // BATCH_SIZE) % 100 == 0:
             checked = batch_start + len(batch_ids)
@@ -642,6 +653,8 @@ def main():
                         help="Verify and fix existing data before ingestion")
     parser.add_argument("--super-check", action="store_true",
                         help="Compare text_hash between docs and chunks, stamp or re-chunk as needed")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="With --super-check, report what would change without modifying anything")
     args = parser.parse_args()
 
     # Parse config
@@ -656,7 +669,10 @@ def main():
     logger.info(f"Devices: {devices}")
     logger.info(f"Batch size: {BATCH_SIZE}")
     if args.super_check:
-        logger.info("Super-check mode: will compare text_hash and stamp/re-chunk")
+        if args.dry_run:
+            logger.info("Super-check DRY RUN: will report changes without modifying anything")
+        else:
+            logger.info("Super-check mode: will compare text_hash and stamp/re-chunk")
     if args.check:
         logger.info("Check mode: will verify and fix existing data first")
 
@@ -669,7 +685,7 @@ def main():
     # Super-check mode: compare text_hash and stamp/re-chunk
     if args.super_check:
         for ds in datasets:
-            super_check_dataset(ds, models, session)
+            super_check_dataset(ds, models, session, dry_run=args.dry_run)
         logger.info("=== Super-check complete ===")
         return
 
