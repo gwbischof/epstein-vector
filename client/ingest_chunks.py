@@ -5,7 +5,8 @@ No download step needed — doc rows must already exist (loaded by ingest_docs.p
 
 Usage:
     python -m client.ingest_chunks
-    python -m client.ingest_chunks --check   # verify and fix existing data first
+    python -m client.ingest_chunks --check         # verify and fix existing data first
+    python -m client.ingest_chunks --super-check   # compare text_hash, stamp or re-chunk
 
 Environment variables:
     API_URL      - Base URL of the vector API (default: https://vector.korroni.cloud)
@@ -132,6 +133,7 @@ def fetch_documents(efta_ids: list[str], session: requests.Session) -> list[dict
             "word_count": row.get("word_count", 0),
             "text": row.get("text", ""),
             "extracted": row.get("word_count", 0) >= 5,
+            "text_hash": row.get("text_hash", ""),
         })
     return docs
 
@@ -142,27 +144,35 @@ def post_chunks(
     sentinels: list[Chunk],
     session: requests.Session,
     overwrite: bool = False,
+    doc_text_hashes: dict[str, str] | None = None,
 ) -> dict:
     """POST chunks only to /ingest/chunks."""
+    hashes = doc_text_hashes or {}
     chunk_payloads = []
     for c, emb in zip(embeddable, embeddings):
-        chunk_payloads.append({
+        payload = {
             "efta_id": c.efta_id,
             "chunk_index": c.chunk_index,
             "total_chunks": c.total_chunks,
             "text": c.text,
             "embedding": emb,
             "version": c.version,
-        })
+        }
+        if c.efta_id in hashes:
+            payload["doc_text_hash"] = hashes[c.efta_id]
+        chunk_payloads.append(payload)
     for c in sentinels:
-        chunk_payloads.append({
+        payload = {
             "efta_id": c.efta_id,
             "chunk_index": c.chunk_index,
             "total_chunks": c.total_chunks,
             "text": c.text,
             "embedding": None,
             "version": c.version,
-        })
+        }
+        if c.efta_id in hashes:
+            payload["doc_text_hash"] = hashes[c.efta_id]
+        chunk_payloads.append(payload)
 
     payload = {"chunks": chunk_payloads, "overwrite": overwrite}
 
@@ -238,6 +248,7 @@ def _process_and_post(
     session: requests.Session,
     overwrite: bool = False,
     label: str = "",
+    doc_text_hashes: dict[str, str] | None = None,
 ) -> int:
     """Split chunks into embeddable/sentinels, embed, and POST. Returns chunk count."""
     embeddable = [c for c in all_chunks if not c.skip_embedding]
@@ -251,7 +262,7 @@ def _process_and_post(
     total_chunks = len(all_chunks)
 
     if total_chunks <= MAX_CHUNKS_PER_POST:
-        result = post_chunks(embeddable, embeddings, sentinels, session, overwrite=overwrite)
+        result = post_chunks(embeddable, embeddings, sentinels, session, overwrite=overwrite, doc_text_hashes=doc_text_hashes)
         logger.info(
             f"{label}: done — "
             f"{result.get('inserted_chunks', 0)} chunks "
@@ -277,7 +288,7 @@ def _process_and_post(
             remaining_sentinels = remaining_sentinels[budget:]
 
             logger.info(f"{label}: sub-batch {sub_num}/{sub_total} ({len(sub_emb) + len(sub_sent)} chunks)...")
-            result = post_chunks(sub_emb, sub_emb_vecs, sub_sent, session, overwrite=overwrite)
+            result = post_chunks(sub_emb, sub_emb_vecs, sub_sent, session, overwrite=overwrite, doc_text_hashes=doc_text_hashes)
             inserted_chunks += result.get('inserted_chunks', 0)
 
         logger.info(f"{label}: done — {inserted_chunks} chunks ({len(sentinels)} sentinels)")
@@ -317,6 +328,9 @@ def ingest_dataset(
         # Fetch full doc records from API
         docs = fetch_documents(batch_ids, session)
 
+        # Build doc_text_hashes map
+        doc_text_hashes = {d["efta_id"]: d["text_hash"] for d in docs if d.get("text_hash")}
+
         # Chunk all docs in this batch
         all_chunks: list[Chunk] = []
         for doc in docs:
@@ -328,6 +342,7 @@ def ingest_dataset(
         total_chunks += _process_and_post(
             all_chunks, models, session,
             label=f"Batch {batch_num}",
+            doc_text_hashes=doc_text_hashes,
         )
 
         # Re-fetch pending list every 10 batches to skip work done by other workers
@@ -364,6 +379,7 @@ def check_dataset(
         "missing_embeddings": 0,
         "stale_metadata": 0,
         "version_mismatch": 0,
+        "hash_mismatch": 0,
     }
 
     to_fix: list[tuple[dict, list[Chunk], str]] = []
@@ -414,6 +430,10 @@ def check_dataset(
             elif act.get("doc_version", 0) < 1 or act.get("chunk_version", 0) < 1:
                 stats["version_mismatch"] += 1
                 to_fix.append((doc, exp_chunks, "version_mismatch"))
+            elif act.get("chunk_text_hash") and act.get("doc_text_hash") and \
+                 act.get("chunk_text_hash") != act.get("doc_text_hash"):
+                stats["hash_mismatch"] += 1
+                to_fix.append((doc, exp_chunks, "hash_mismatch"))
             else:
                 stats["ok"] += 1
 
@@ -436,18 +456,178 @@ def check_dataset(
     for fix_start in range(0, len(to_fix), BATCH_SIZE):
         fix_batch = to_fix[fix_start : fix_start + BATCH_SIZE]
         all_chunks: list[Chunk] = []
-        for _, chunks, _ in fix_batch:
+        batch_hashes: dict[str, str] = {}
+        for doc, chunks, _ in fix_batch:
             all_chunks.extend(chunks)
+            if doc.get("text_hash"):
+                batch_hashes[doc["efta_id"]] = doc["text_hash"]
 
         _process_and_post(
             all_chunks, models, session,
             overwrite=True,
             label=f"Fix batch {fix_start // BATCH_SIZE + 1}",
+            doc_text_hashes=batch_hashes,
         )
         fixed += len(fix_batch)
         logger.info(f"Fixed {fixed}/{len(to_fix)} docs")
 
     logger.info(f"Dataset {dataset} check complete: fixed {len(to_fix)} docs")
+
+
+def fetch_chunks(efta_ids: list[str], session: requests.Session) -> dict[str, list[dict]]:
+    """Fetch chunk texts grouped by efta_id from the API."""
+    resp = session.post(
+        f"{API_URL}/ingest/chunks/fetch",
+        json={"efta_ids": efta_ids},
+        headers=_headers(),
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def stamp_hashes(stamps: list[dict], session: requests.Session) -> dict:
+    """Stamp doc_text_hash on existing chunks without re-uploading."""
+    resp = session.post(
+        f"{API_URL}/ingest/chunks/stamp_hash",
+        json={"stamps": stamps},
+        headers=_headers(),
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def super_check_dataset(
+    dataset: int,
+    models: list[BGEModel],
+    session: requests.Session,
+) -> None:
+    """Compare text_hash between documents and chunks, fix mismatches.
+
+    For chunks missing doc_text_hash (NULL), fetches actual chunk texts and
+    compares against expected. Stamps matching chunks, re-chunks mismatches.
+    """
+    logger.info(f"=== Super-Check Dataset {dataset} ===")
+
+    all_ids = get_all_ids(dataset, session)
+    logger.info(f"{len(all_ids)} documents to super-check")
+
+    stats = {
+        "already_synced": 0,
+        "stamped": 0,
+        "rechunked": 0,
+        "missing_chunks": 0,
+    }
+
+    for batch_start in range(0, len(all_ids), BATCH_SIZE):
+        batch_ids = all_ids[batch_start : batch_start + BATCH_SIZE]
+
+        # Fetch docs (with text_hash) and chunk status in parallel
+        docs = fetch_documents(batch_ids, session)
+        docs_by_id = {d["efta_id"]: d for d in docs}
+
+        try:
+            actual = get_chunk_status(batch_ids, session)
+        except requests.RequestException as e:
+            logger.warning(f"Failed to get chunk status for batch at {batch_start}: {e}")
+            continue
+
+        # Categorize docs
+        to_stamp: list[dict] = []  # chunks match, just need hash stamped
+        to_rechunk: list[tuple[dict, list[Chunk]]] = []  # chunks stale, need re-embed
+        to_fetch_and_compare: list[str] = []  # need to compare actual vs expected
+
+        for eid in batch_ids:
+            doc = docs_by_id.get(eid)
+            if doc is None:
+                continue
+
+            act = actual.get(eid, {})
+            doc_hash = doc.get("text_hash")
+            chunk_hash = act.get("chunk_text_hash")
+            chunk_count = act.get("chunk_count", 0)
+
+            if chunk_count == 0:
+                # No chunks at all — need full re-chunk
+                exp_chunks = chunk_document(doc)
+                to_rechunk.append((doc, exp_chunks))
+                stats["missing_chunks"] += 1
+            elif chunk_hash and doc_hash and chunk_hash == doc_hash:
+                # Already synced
+                stats["already_synced"] += 1
+            elif chunk_hash is None and chunk_count > 0:
+                # Chunks exist but no hash — need to compare texts
+                to_fetch_and_compare.append(eid)
+            elif chunk_hash and doc_hash and chunk_hash != doc_hash:
+                # Hash mismatch — chunks are stale
+                exp_chunks = chunk_document(doc)
+                to_rechunk.append((doc, exp_chunks))
+                stats["rechunked"] += 1
+
+        # Fetch actual chunk texts for comparison (batches of 50)
+        if to_fetch_and_compare:
+            chunk_data = fetch_chunks(to_fetch_and_compare, session)
+
+            for eid in to_fetch_and_compare:
+                doc = docs_by_id.get(eid)
+                if doc is None:
+                    continue
+
+                # Get expected chunks
+                exp_chunks = chunk_document(doc)
+                exp_texts = [c.text for c in exp_chunks]
+
+                # Get actual chunk texts
+                actual_chunks = chunk_data.get(eid, [])
+                actual_texts = [c["text"] for c in sorted(actual_chunks, key=lambda x: x["chunk_index"])]
+
+                if exp_texts == actual_texts:
+                    # Chunks match — just stamp the hash
+                    doc_hash = doc.get("text_hash")
+                    if doc_hash:
+                        to_stamp.append({"efta_id": eid, "doc_text_hash": doc_hash})
+                    stats["stamped"] += 1
+                else:
+                    # Chunks differ — re-chunk and re-embed
+                    to_rechunk.append((doc, exp_chunks))
+                    stats["rechunked"] += 1
+
+        # Stamp matching chunks
+        if to_stamp:
+            try:
+                stamp_hashes(to_stamp, session)
+                logger.info(f"Stamped {len(to_stamp)} docs' chunks")
+            except requests.RequestException as e:
+                logger.warning(f"Failed to stamp hashes: {e}")
+
+        # Re-chunk and re-embed mismatches
+        if to_rechunk:
+            all_chunks: list[Chunk] = []
+            batch_hashes: dict[str, str] = {}
+            for doc, chunks in to_rechunk:
+                all_chunks.extend(chunks)
+                if doc.get("text_hash"):
+                    batch_hashes[doc["efta_id"]] = doc["text_hash"]
+
+            _process_and_post(
+                all_chunks, models, session,
+                overwrite=True,
+                label=f"Super-check fix batch {batch_start // BATCH_SIZE + 1}",
+                doc_text_hashes=batch_hashes,
+            )
+
+        if (batch_start // BATCH_SIZE) % 100 == 0:
+            checked = batch_start + len(batch_ids)
+            logger.info(
+                f"Super-checked {checked}/{len(all_ids)} docs — "
+                f"synced={stats['already_synced']}, stamped={stats['stamped']}, "
+                f"rechunked={stats['rechunked']}, missing={stats['missing_chunks']}"
+            )
+
+    logger.info(f"Dataset {dataset} super-check complete:")
+    for reason, count in stats.items():
+        logger.info(f"  {reason:25s}: {count:>8,}")
 
 
 def main():
@@ -460,6 +640,8 @@ def main():
     parser = argparse.ArgumentParser(description="GPU chunk worker")
     parser.add_argument("--check", action="store_true",
                         help="Verify and fix existing data before ingestion")
+    parser.add_argument("--super-check", action="store_true",
+                        help="Compare text_hash between docs and chunks, stamp or re-chunk as needed")
     args = parser.parse_args()
 
     # Parse config
@@ -473,6 +655,8 @@ def main():
     logger.info(f"Datasets: {datasets}")
     logger.info(f"Devices: {devices}")
     logger.info(f"Batch size: {BATCH_SIZE}")
+    if args.super_check:
+        logger.info("Super-check mode: will compare text_hash and stamp/re-chunk")
     if args.check:
         logger.info("Check mode: will verify and fix existing data first")
 
@@ -481,6 +665,13 @@ def main():
 
     # Create HTTP session
     session = requests.Session()
+
+    # Super-check mode: compare text_hash and stamp/re-chunk
+    if args.super_check:
+        for ds in datasets:
+            super_check_dataset(ds, models, session)
+        logger.info("=== Super-check complete ===")
+        return
 
     # Check mode: verify and fix existing data
     if args.check:

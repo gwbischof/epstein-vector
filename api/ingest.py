@@ -30,6 +30,9 @@ class DocumentRecord(BaseModel):
     version: int = 1
 
 
+# text_hash is computed server-side via md5(text), not sent by client
+
+
 class ChunkRecord(BaseModel):
     efta_id: str
     chunk_index: int
@@ -37,6 +40,7 @@ class ChunkRecord(BaseModel):
     text: str
     embedding: list[float] | None = None  # 1024-dim, None for sentinel chunks
     version: int = 1
+    doc_text_hash: str | None = None
 
 
 class DocumentUpsertRequest(BaseModel):
@@ -64,6 +68,7 @@ class DocumentFetchRecord(BaseModel):
     word_count: int
     text: str
     version: int
+    text_hash: str | None = None
 
 
 class ChunksRequest(BaseModel):
@@ -84,9 +89,11 @@ class ChunkStatusItem(BaseModel):
     has_doc: bool
     doc_word_count: int
     doc_version: int
+    doc_text_hash: str | None = None
     chunk_count: int
     embedded_count: int
     chunk_version: int
+    chunk_text_hash: str | None = None
 
 
 # --- Endpoints ---
@@ -118,14 +125,16 @@ def ingest_documents(req: DocumentUpsertRequest) -> DocumentUpsertResponse:
             doc.word_count,
             text,
             doc.version,
+            text,  # repeated for md5(text) → text_hash
         ))
 
     sql = """
-        INSERT INTO documents (efta_id, dataset, url, pages, word_count, text, version)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO documents (efta_id, dataset, url, pages, word_count, text, version, text_hash)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, md5(%s))
         ON CONFLICT (efta_id) DO UPDATE SET
             dataset=EXCLUDED.dataset, url=EXCLUDED.url, pages=EXCLUDED.pages,
-            word_count=EXCLUDED.word_count, text=EXCLUDED.text, version=EXCLUDED.version
+            word_count=EXCLUDED.word_count, text=EXCLUDED.text, version=EXCLUDED.version,
+            text_hash=EXCLUDED.text_hash
         WHERE EXCLUDED.version > documents.version
            OR (EXCLUDED.version = documents.version AND EXCLUDED.word_count > documents.word_count)
     """
@@ -189,7 +198,7 @@ def ingest_documents_fetch(req: DocumentFetchRequest) -> list[DocumentFetchRecor
     pool = get_ingest_pool()
 
     sql = """
-        SELECT efta_id, dataset, url, pages, word_count, text, version
+        SELECT efta_id, dataset, url, pages, word_count, text, version, text_hash
         FROM documents
         WHERE efta_id = ANY(%s)
     """
@@ -240,13 +249,14 @@ def ingest_chunks(req: ChunksRequest) -> ChunksResponse:
                     chunk.text,
                     vec_str,
                     chunk.version,
+                    chunk.doc_text_hash,
                 ))
 
             for i in range(0, len(chunk_values), DB_BATCH):
                 cur.executemany(
                     """
-                    INSERT INTO chunks (efta_id, chunk_index, total_chunks, text, embedding, version)
-                    VALUES (%s, %s, %s, %s, %s::halfvec, %s)
+                    INSERT INTO chunks (efta_id, chunk_index, total_chunks, text, embedding, version, doc_text_hash)
+                    VALUES (%s, %s, %s, %s, %s::halfvec, %s, %s)
                     ON CONFLICT (efta_id, chunk_index) DO NOTHING
                     """,
                     chunk_values[i : i + DB_BATCH],
@@ -298,16 +308,68 @@ def ingest_chunk_status(req: ChunkStatusRequest) -> list[ChunkStatusItem]:
             d.efta_id IS NOT NULL AS has_doc,
             COALESCE(d.word_count, 0) AS doc_word_count,
             COALESCE(d.version, 0) AS doc_version,
+            d.text_hash AS doc_text_hash,
             COUNT(c.efta_id) AS chunk_count,
             COUNT(c.embedding) AS embedded_count,
-            COALESCE(MIN(c.version), 0) AS chunk_version
+            COALESCE(MIN(c.version), 0) AS chunk_version,
+            MIN(c.doc_text_hash) AS chunk_text_hash
         FROM unnest(%s::text[]) AS e(efta_id)
         LEFT JOIN documents d ON d.efta_id = e.efta_id
         LEFT JOIN chunks c ON c.efta_id = e.efta_id
-        GROUP BY e.efta_id, d.efta_id, d.word_count, d.version
+        GROUP BY e.efta_id, d.efta_id, d.word_count, d.version, d.text_hash
     """
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (req.efta_ids,))
             rows = cur.fetchall()
     return [ChunkStatusItem(**row) for row in rows]
+
+
+class ChunkFetchRequest(BaseModel):
+    efta_ids: list[str] = Field(..., max_length=50)
+
+
+@router.post("/ingest/chunks/fetch")
+def ingest_chunks_fetch(req: ChunkFetchRequest) -> dict:
+    """Return chunk texts grouped by efta_id."""
+    pool = get_ingest_pool()
+    sql = """
+        SELECT efta_id, chunk_index, text
+        FROM chunks
+        WHERE efta_id = ANY(%s)
+        ORDER BY efta_id, chunk_index
+    """
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (req.efta_ids,))
+            rows = cur.fetchall()
+
+    result: dict[str, list[dict]] = {}
+    for row in rows:
+        eid = row["efta_id"]
+        if eid not in result:
+            result[eid] = []
+        result[eid].append({"chunk_index": row["chunk_index"], "text": row["text"]})
+    return result
+
+
+class StampHashRequest(BaseModel):
+    stamps: list[dict]  # [{"efta_id": "...", "doc_text_hash": "..."}]
+
+
+@router.post("/ingest/chunks/stamp_hash")
+def stamp_chunk_hash(req: StampHashRequest):
+    """Stamp doc_text_hash on existing chunks without re-uploading embeddings."""
+    pool = get_ingest_pool()
+    sql = "UPDATE chunks SET doc_text_hash = %s WHERE efta_id = %s"
+    values = [(s["doc_text_hash"], s["efta_id"]) for s in req.stamps]
+
+    DB_BATCH = 500
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            for i in range(0, len(values), DB_BATCH):
+                cur.executemany(sql, values[i : i + DB_BATCH])
+        conn.commit()
+
+    logger.info(f"Stamped doc_text_hash on {len(req.stamps)} docs' chunks")
+    return {"stamped": len(req.stamps)}
