@@ -61,6 +61,7 @@ def search(req: SearchRequest) -> SearchResponse:
                1 - (c.embedding <=> %s::halfvec) AS score
         FROM chunks c
         JOIN documents d ON d.efta_id = c.efta_id
+        WHERE c.embedding IS NOT NULL
         ORDER BY c.embedding <=> %s::halfvec
         LIMIT %s OFFSET %s
     """
@@ -95,6 +96,8 @@ class TextSearchRequest(BaseModel):
 class TextResult(BaseModel):
     efta_id: str
     dataset: int | None = None
+    chunk_index: int
+    total_chunks: int
     word_count: int
     rank: float
     headline: str
@@ -153,7 +156,7 @@ def _build_wildcard_tsquery(query: str) -> str:
 
 
 def text_search(req: TextSearchRequest) -> TextSearchResponse:
-    """Full-text search over documents."""
+    """Full-text search over chunks."""
     pool = get_pool()
 
     use_wildcard = _has_wildcards(req.query)
@@ -169,12 +172,13 @@ def text_search(req: TextSearchRequest) -> TextSearchResponse:
         query_param = req.query
 
     sql = f"""
-        SELECT efta_id, dataset, word_count,
-               ts_rank(tsv, {tsquery_expr}) AS rank,
-               ts_headline('english', text, {tsquery_expr},
+        SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, d.word_count,
+               ts_rank(c.tsv, {tsquery_expr}) AS rank,
+               ts_headline('english', c.text, {tsquery_expr},
                            'MaxWords=60, MinWords=20, MaxFragments=3') AS headline
-        FROM documents
-        WHERE tsv @@ {tsquery_expr}
+        FROM chunks c
+        JOIN documents d ON d.efta_id = c.efta_id
+        WHERE c.tsv @@ {tsquery_expr}
         ORDER BY rank DESC
         LIMIT %s OFFSET %s
     """
@@ -189,6 +193,8 @@ def text_search(req: TextSearchRequest) -> TextSearchResponse:
         TextResult(
             efta_id=row["efta_id"],
             dataset=row["dataset"],
+            chunk_index=row["chunk_index"],
+            total_chunks=row["total_chunks"],
             word_count=row["word_count"],
             rank=float(row["rank"]),
             headline=row["headline"],
@@ -209,7 +215,7 @@ class CountResponse(BaseModel):
 
 
 def text_search_count(req: CountRequest) -> CountResponse:
-    """Count documents matching a full-text query."""
+    """Count chunks matching a full-text query."""
     pool = get_pool()
 
     use_wildcard = _has_wildcards(req.query)
@@ -220,7 +226,7 @@ def text_search_count(req: CountRequest) -> CountResponse:
         tsquery_expr = "websearch_to_tsquery('english', %s)"
         query_param = req.query
 
-    sql = f"SELECT count(*) FROM documents WHERE tsv @@ {tsquery_expr}"
+    sql = f"SELECT count(*) FROM chunks WHERE tsv @@ {tsquery_expr}"
 
     with pool.connection() as conn:
         with conn.cursor() as cur:
@@ -286,11 +292,11 @@ def fuzzy_search(req: FuzzySearchRequest) -> FuzzySearchResponse:
     """Fuzzy trigram search over chunks — typo-tolerant matching."""
     pool = get_pool()
 
-    # Optional: exclude docs that keyword search already finds
+    # Optional: exclude chunks that keyword search already finds
     exclude_clause = ""
     exclude_params: tuple = ()
     if req.exclude_exact:
-        exclude_clause = " AND NOT d.tsv @@ websearch_to_tsquery('english', %s)"
+        exclude_clause = " AND NOT c.tsv @@ websearch_to_tsquery('english', %s)"
         exclude_params = (req.query,)
 
     sql = f"""
@@ -349,13 +355,14 @@ def similar(req: SimilarRequest) -> SearchResponse:
 
     vec_str = str(row["embedding"])
 
-    # Find nearest neighbors, excluding the source chunk itself
+    # Find nearest neighbors, excluding the source chunk itself and sentinel chunks
     sql = """
         SELECT c.efta_id, d.dataset, c.chunk_index, c.total_chunks, c.text,
                1 - (c.embedding <=> %s::halfvec) AS score
         FROM chunks c
         JOIN documents d ON d.efta_id = c.efta_id
-        WHERE NOT (c.efta_id = %s AND c.chunk_index = %s)
+        WHERE c.embedding IS NOT NULL
+          AND NOT (c.efta_id = %s AND c.chunk_index = %s)
         ORDER BY c.embedding <=> %s::halfvec
         LIMIT %s OFFSET %s
     """

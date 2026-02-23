@@ -35,12 +35,30 @@ class Chunk:
     chunk_index: int
     total_chunks: int
     text: str
+    skip_embedding: bool = False
+    version: int = 1
+
+
+def _sentinel(efta_id: str, dataset: int, text: str) -> list[Chunk]:
+    """Return a single sentinel chunk for docs that can't be embedded."""
+    prefix = f"[{efta_id} | Dataset {dataset}] "
+    body = text.strip() if text.strip() else "(no text)"
+    return [Chunk(
+        efta_id=efta_id,
+        dataset=dataset,
+        chunk_index=0,
+        total_chunks=1,
+        text=prefix + body,
+        skip_embedding=True,
+    )]
 
 
 def chunk_document(doc: dict) -> list[Chunk]:
     """Chunk a single document dict from the JSONL.
 
     Expected fields: efta_id, dataset, text, word_count, extracted.
+    Always returns at least one Chunk. Documents that fail quality checks
+    get a sentinel chunk with skip_embedding=True (stored with NULL embedding).
     """
     efta_id = doc.get("efta_id") or doc.get("efta", "")
     dataset = int(doc.get("dataset", 0))
@@ -48,17 +66,17 @@ def chunk_document(doc: dict) -> list[Chunk]:
     word_count = doc.get("word_count", 0)
     extracted = doc.get("extracted", True)
 
-    # Skip non-extracted or very short docs
+    # Non-extracted or very short docs → sentinel
     if not extracted or word_count < MIN_WORD_COUNT or not text.strip():
-        return []
+        return _sentinel(efta_id, dataset, text)
 
-    # Skip garbage OCR: check ratio of alphabetic chars to non-whitespace chars
+    # Garbage OCR → sentinel
     non_ws = [c for c in text if not c.isspace()]
     if non_ws:
         alpha_ratio = sum(1 for c in non_ws if c.isalpha()) / len(non_ws)
         if alpha_ratio < MIN_ALPHA_RATIO:
             logger.debug(f"Skipping {efta_id}: alpha_ratio={alpha_ratio:.2f}")
-            return []
+            return _sentinel(efta_id, dataset, text)
 
     prefix = f"[{efta_id} | Dataset {dataset}] "
 
@@ -90,12 +108,11 @@ def chunk_document(doc: dict) -> list[Chunk]:
 def chunk_documents(docs: list[dict]) -> list[Chunk]:
     """Chunk a list of documents."""
     chunks = []
-    skipped = 0
+    sentinels = 0
     for doc in docs:
         result = chunk_document(doc)
-        if result:
-            chunks.extend(result)
-        else:
-            skipped += 1
-    logger.info(f"Chunked {len(docs)} docs → {len(chunks)} chunks (skipped {skipped})")
+        chunks.extend(result)
+        if result and result[0].skip_embedding:
+            sentinels += 1
+    logger.info(f"Chunked {len(docs)} docs → {len(chunks)} chunks ({sentinels} sentinels)")
     return chunks

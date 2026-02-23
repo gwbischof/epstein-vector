@@ -43,7 +43,7 @@ export function TextResultCard({ result, index, onFindSimilar }: TextResultCardP
         </div>
       </div>
 
-      {/* Meta row: word count + rank */}
+      {/* Meta row: word count + rank + chunk */}
       <div className="flex items-center gap-4 mb-3 text-[11px] text-slate-500">
         <span className="flex items-center gap-1">
           <BookOpen className="w-3 h-3" />
@@ -53,6 +53,11 @@ export function TextResultCard({ result, index, onFindSimilar }: TextResultCardP
           <Hash className="w-3 h-3" />
           Rank {result.rank.toFixed(4)}
         </span>
+        {result.total_chunks > 1 && (
+          <span className="flex items-center gap-1">
+            Chunk {result.chunk_index + 1}/{result.total_chunks}
+          </span>
+        )}
       </div>
 
       {/* Headline with bold highlights rendered */}
@@ -74,7 +79,7 @@ export function TextResultCard({ result, index, onFindSimilar }: TextResultCardP
         </a>
         {onFindSimilar && (
           <button
-            onClick={() => onFindSimilar(result.efta_id, 0)}
+            onClick={() => onFindSimilar(result.efta_id, result.chunk_index)}
             className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-400 transition-colors"
           >
             <Sparkles className="w-3 h-3" />

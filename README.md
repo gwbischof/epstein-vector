@@ -46,13 +46,15 @@ curl -X POST http://localhost:8000/vector_search \
 
 #### POST /text_search
 
-Full-text keyword search — finds exact word matches.
+Full-text keyword search — finds exact word matches. Returns chunk-level results with `chunk_index` and `total_chunks`.
 
 ```bash
 curl -X POST http://localhost:8000/text_search \
   -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"query": "Maxwell flight", "limit": 10}'
 ```
+
+Response includes: `efta_id`, `dataset`, `chunk_index`, `total_chunks`, `word_count`, `rank`, `headline`.
 
 Query syntax:
 
@@ -96,6 +98,24 @@ Embedded document and chunk counts. Requires `INGEST_API_KEY`.
 curl http://localhost:8000/ingest/stats -H "X-API-Key: $INGEST_API_KEY"
 curl "http://localhost:8000/ingest/stats?dataset=9" -H "X-API-Key: $INGEST_API_KEY"
 ```
+
+#### POST /ingest/chunk_status
+
+Check per-document chunk status for a batch of efta_ids (max 50). Returns whether the document row exists, chunk counts, embedding counts, and version info. Requires `INGEST_API_KEY`.
+
+```bash
+curl -X POST http://localhost:8000/ingest/chunk_status \
+  -H "X-API-Key: $INGEST_API_KEY" -H "Content-Type: application/json" \
+  -d '{"efta_ids": ["EFTA00123456", "EFTA00123457"]}'
+```
+
+Response: `[{"efta_id": "...", "has_doc": true, "doc_word_count": 186, "doc_version": 1, "chunk_count": 3, "embedded_count": 3, "chunk_version": 1}]`
+
+#### POST /ingest
+
+Accepts batched documents + chunks with pre-computed embeddings. Chunks may have `null` embedding (sentinel chunks for unchunkable documents).
+
+Additional parameter: `overwrite` (default false) — when true, existing document rows are updated and existing chunks are deleted and re-inserted.
 
 #### GET /health
 
@@ -165,6 +185,18 @@ docker run --gpus all -e CUDA_DEVICES="0,1" -e API_KEY="key" -e DATASETS="9" eps
 # Or separate containers per GPU
 docker run --gpus all -e CUDA_DEVICES="0" -e API_KEY="key" -e DATASETS="9" epstein-ingest
 docker run --gpus all -e CUDA_DEVICES="1" -e API_KEY="key" -e DATASETS="9" epstein-ingest
+```
+
+### Check mode
+
+Run with `--check` to verify and fix existing data before normal ingestion. This compares every doc in the JSONL against the database, fixing missing docs, missing chunks, wrong chunk counts, missing embeddings, stale metadata, and version mismatches.
+
+```bash
+docker run --gpus all \
+  -e API_URL="https://vector.korroni.cloud" \
+  -e API_KEY="your-ingest-api-key" \
+  -e DATASETS="9" \
+  epstein-ingest python -m client.ingest_remote --check
 ```
 
 ### Resumability

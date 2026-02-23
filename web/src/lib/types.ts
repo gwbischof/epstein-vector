@@ -17,6 +17,8 @@ export interface VectorSearchResponse {
 export interface TextResult {
   efta_id: string;
   dataset: number | null;
+  chunk_index: number;
+  total_chunks: number;
   word_count: number;
   rank: number;
   headline: string;

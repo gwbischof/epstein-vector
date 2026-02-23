@@ -27,6 +27,7 @@ class DocumentRecord(BaseModel):
     pages: int = 0
     word_count: int = 0
     text: str = ""
+    version: int = 1
 
 
 class ChunkRecord(BaseModel):
@@ -34,12 +35,14 @@ class ChunkRecord(BaseModel):
     chunk_index: int
     total_chunks: int
     text: str
-    embedding: list[float]  # 1024-dim
+    embedding: list[float] | None = None  # 1024-dim, None for sentinel chunks
+    version: int = 1
 
 
 class IngestRequest(BaseModel):
     documents: list[DocumentRecord]
     chunks: list[ChunkRecord]
+    overwrite: bool = False
 
 
 class IngestResponse(BaseModel):
@@ -131,9 +134,9 @@ def ingest_stats(dataset: int | None = None):
 @router.post("/ingest")
 def ingest(req: IngestRequest) -> IngestResponse:
     """Accept batch of documents + chunks with pre-computed embeddings."""
-    # Validate embedding dimensions
+    # Validate embedding dimensions (skip sentinel chunks with None embedding)
     for i, chunk in enumerate(req.chunks):
-        if len(chunk.embedding) != EMBEDDING_DIM:
+        if chunk.embedding is not None and len(chunk.embedding) != EMBEDDING_DIM:
             raise HTTPException(
                 status_code=422,
                 detail=f"Chunk {i} ({chunk.efta_id}:{chunk.chunk_index}) has {len(chunk.embedding)}-dim embedding, expected {EMBEDDING_DIM}",
@@ -159,35 +162,53 @@ def ingest(req: IngestRequest) -> IngestResponse:
                     doc.pages,
                     doc.word_count,
                     text,
+                    doc.version,
                 ))
 
-            for i in range(0, len(doc_values), DB_BATCH):
-                cur.executemany(
-                    """
-                    INSERT INTO documents (efta_id, dataset, url, pages, word_count, text)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+            if req.overwrite:
+                doc_sql = """
+                    INSERT INTO documents (efta_id, dataset, url, pages, word_count, text, version)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (efta_id) DO UPDATE SET
+                        dataset=EXCLUDED.dataset, url=EXCLUDED.url, pages=EXCLUDED.pages,
+                        word_count=EXCLUDED.word_count, text=EXCLUDED.text, version=EXCLUDED.version
+                """
+            else:
+                doc_sql = """
+                    INSERT INTO documents (efta_id, dataset, url, pages, word_count, text, version)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (efta_id) DO NOTHING
-                    """,
-                    doc_values[i : i + DB_BATCH],
-                )
+                """
+
+            for i in range(0, len(doc_values), DB_BATCH):
+                cur.executemany(doc_sql, doc_values[i : i + DB_BATCH])
+
+            # When overwriting, delete old chunks for all efta_ids in this batch
+            if req.overwrite and req.chunks:
+                efta_ids = list({c.efta_id for c in req.chunks})
+                cur.execute("DELETE FROM chunks WHERE efta_id = ANY(%s)", (efta_ids,))
 
             # Insert chunks with embeddings in batches
             chunk_values = []
             for chunk in req.chunks:
-                vec_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
+                if chunk.embedding is not None:
+                    vec_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
+                else:
+                    vec_str = None  # NULL in Postgres — skipped by HNSW index
                 chunk_values.append((
                     chunk.efta_id,
                     chunk.chunk_index,
                     chunk.total_chunks,
                     chunk.text,
                     vec_str,
+                    chunk.version,
                 ))
 
             for i in range(0, len(chunk_values), DB_BATCH):
                 cur.executemany(
                     """
-                    INSERT INTO chunks (efta_id, chunk_index, total_chunks, text, embedding)
-                    VALUES (%s, %s, %s, %s, %s::halfvec)
+                    INSERT INTO chunks (efta_id, chunk_index, total_chunks, text, embedding, version)
+                    VALUES (%s, %s, %s, %s, %s::halfvec, %s)
                     ON CONFLICT (efta_id, chunk_index) DO NOTHING
                     """,
                     chunk_values[i : i + DB_BATCH],
@@ -195,8 +216,50 @@ def ingest(req: IngestRequest) -> IngestResponse:
 
         conn.commit()
 
-    logger.info(f"Ingested {len(req.documents)} docs, {len(req.chunks)} chunks")
+    logger.info(f"Ingested {len(req.documents)} docs, {len(req.chunks)} chunks (overwrite={req.overwrite})")
     return IngestResponse(
         inserted_documents=len(req.documents),
         inserted_chunks=len(req.chunks),
     )
+
+
+# --- Chunk status endpoint ---
+
+
+class ChunkStatusRequest(BaseModel):
+    efta_ids: list[str] = Field(..., max_length=50)
+
+
+class ChunkStatusItem(BaseModel):
+    efta_id: str
+    has_doc: bool
+    doc_word_count: int
+    doc_version: int
+    chunk_count: int
+    embedded_count: int
+    chunk_version: int
+
+
+@router.post("/ingest/chunk_status")
+def ingest_chunk_status(req: ChunkStatusRequest) -> list[ChunkStatusItem]:
+    """Return per-document chunk status for a batch of efta_ids."""
+    pool = get_ingest_pool()
+    sql = """
+        SELECT
+            e.efta_id,
+            d.efta_id IS NOT NULL AS has_doc,
+            COALESCE(d.word_count, 0) AS doc_word_count,
+            COALESCE(d.version, 0) AS doc_version,
+            COUNT(c.efta_id) AS chunk_count,
+            COUNT(c.embedding) AS embedded_count,
+            COALESCE(MIN(c.version), 0) AS chunk_version
+        FROM unnest(%s::text[]) AS e(efta_id)
+        LEFT JOIN documents d ON d.efta_id = e.efta_id
+        LEFT JOIN chunks c ON c.efta_id = e.efta_id
+        GROUP BY e.efta_id, d.efta_id, d.word_count, d.version
+    """
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (req.efta_ids,))
+            rows = cur.fetchall()
+    return [ChunkStatusItem(**row) for row in rows]
