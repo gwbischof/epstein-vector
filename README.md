@@ -310,7 +310,7 @@ docker run --gpus all \
   -e API_URL="https://vector.korroni.cloud" \
   -e API_KEY="your-ingest-api-key" \
   -e DATASETS="9" \
-  epstein-ingest python -m client.ingest_chunks --check
+  epstein-ingest --check
 ```
 
 How it works:
