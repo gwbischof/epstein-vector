@@ -116,6 +116,8 @@ def main():
     parser.add_argument("api_key", help="Ingest API key")
     parser.add_argument("--datasets", default=None,
                         help="Comma-separated dataset numbers (default: all)")
+    parser.add_argument("--start", type=int, default=None,
+                        help="Start from this dataset number (skip earlier ones)")
     parser.add_argument("--version", type=int, default=1,
                         help="Document version (default: 1)")
     args = parser.parse_args()
@@ -124,6 +126,9 @@ def main():
         datasets = [int(x.strip()) for x in args.datasets.split(",") if x.strip()]
     else:
         datasets = list(DATASETS)
+
+    if args.start:
+        datasets = [d for d in datasets if d >= args.start]
 
     logger.info(f"API: {API_URL}")
     logger.info(f"Datasets: {datasets}")

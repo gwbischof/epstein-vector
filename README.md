@@ -91,6 +91,17 @@ curl -X POST http://localhost:8000/similarity_search \
 
 Additional parameters: `efta_id` (required), `chunk_index` (default 0).
 
+#### GET /get_document/{efta_id}
+
+Fetch a single document by EFTA ID.
+
+```bash
+curl http://localhost:8000/get_document/EFTA00123456 \
+  -H "X-API-Key: $API_KEY"
+```
+
+Response: `{"efta_id": "EFTA00123456", "dataset": 9, "url": "...", "pages": 5, "word_count": 186, "text": "...", "version": 1}`
+
 #### GET /ingest/stats
 
 Embedded document and chunk counts. Requires `INGEST_API_KEY`.
@@ -177,9 +188,10 @@ Ingestion is split into two independent stages:
 `ingest_docs.py` streams JSONL files line by line and bulk-loads document rows into the `documents` table via `POST /ingest/documents`. No GPU needed.
 
 ```bash
-python -m client.ingest_docs API_KEY                   # all datasets
-python -m client.ingest_docs API_KEY --datasets 9,10   # specific datasets
-python -m client.ingest_docs API_KEY --version 2       # set version (for OCR v2)
+uv run python -m client.ingest_docs API_KEY                   # all datasets
+uv run python -m client.ingest_docs API_KEY --datasets 9,10   # specific datasets
+uv run python -m client.ingest_docs API_KEY --start 10        # resume from dataset 10
+uv run python -m client.ingest_docs API_KEY --version 2       # set version (for OCR v2)
 ```
 
 Documents are version-gated: only updated if the incoming version is strictly greater than the existing version. This makes it safe to re-run at any time — Postgres handles dedup.
@@ -191,8 +203,8 @@ Data sizes: ~3.6 GB total, 1.2M docs across 12 datasets. The big three are set_9
 `ingest_chunks.py` fetches pending documents (those with zero chunks) from the API, chunks the text, embeds on GPU, and uploads chunks.
 
 ```bash
-python -m client.ingest_chunks
-python -m client.ingest_chunks --check   # verify and fix existing data first
+uv run python -m client.ingest_chunks
+uv run python -m client.ingest_chunks --check   # verify and fix existing data first
 ```
 
 The GPU worker never downloads JSONL — it reads documents from the database via the API. This means documents must be loaded first (Stage 1).

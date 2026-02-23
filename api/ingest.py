@@ -259,28 +259,32 @@ def ingest_chunks(req: ChunksRequest) -> ChunksResponse:
 
 @router.get("/ingest/stats")
 def ingest_stats(dataset: int | None = None):
-    """Return total embedded document and chunk counts, optionally filtered by dataset."""
+    """Return document and chunk counts."""
     pool = get_ingest_pool()
     with pool.connection() as conn:
         with conn.cursor() as cur:
             if dataset is not None:
+                cur.execute("SELECT COUNT(*) AS total_docs FROM documents WHERE dataset = %s", (dataset,))
+                total_docs = cur.fetchone()["total_docs"]
                 cur.execute(
                     """
-                    SELECT COUNT(DISTINCT c.efta_id) AS docs, COUNT(*) AS chunks
+                    SELECT COUNT(DISTINCT c.efta_id) AS chunked_docs, COUNT(*) AS chunks
                     FROM chunks c JOIN documents d ON d.efta_id = c.efta_id
                     WHERE d.dataset = %s
                     """,
                     (dataset,),
                 )
             else:
+                cur.execute("SELECT COUNT(*) AS total_docs FROM documents")
+                total_docs = cur.fetchone()["total_docs"]
                 cur.execute(
                     """
-                    SELECT COUNT(DISTINCT efta_id) AS docs, COUNT(*) AS chunks
+                    SELECT COUNT(DISTINCT efta_id) AS chunked_docs, COUNT(*) AS chunks
                     FROM chunks
                     """,
                 )
             row = cur.fetchone()
-    return {"dataset": dataset, "documents": row["docs"], "chunks": row["chunks"]}
+    return {"dataset": dataset, "total_docs": total_docs, "chunked_docs": row["chunked_docs"], "chunks": row["chunks"]}
 
 
 @router.post("/ingest/chunk_status")
