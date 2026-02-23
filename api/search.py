@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from api.db import get_pool
@@ -386,3 +387,32 @@ def similar(req: SimilarRequest) -> SearchResponse:
     ]
 
     return SearchResponse(query=f"Similar to {req.efta_id}", results=results)
+
+
+class DocumentResponse(BaseModel):
+    efta_id: str
+    dataset: int
+    url: str
+    pages: int
+    word_count: int
+    text: str
+    version: int
+
+
+def get_document(efta_id: str) -> DocumentResponse:
+    """Fetch a single document by efta_id."""
+    pool = get_pool()
+
+    sql = """
+        SELECT efta_id, dataset, url, pages, word_count, text, version
+        FROM documents WHERE efta_id = %s
+    """
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (efta_id,))
+            row = cur.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Document {efta_id} not found")
+
+    return DocumentResponse(**row)

@@ -1,18 +1,17 @@
-"""Self-contained GPU ingestion worker.
+"""GPU chunk worker: fetches docs from API, chunks, embeds, uploads chunks.
 
-Downloads JSONL, chunks docs, embeds on local GPU, and POSTs results
-to the remote /ingest API. No database credentials needed.
+Reads documents from the database (via API) instead of JSONL files.
+No download step needed — doc rows must already exist (loaded by ingest_docs.py).
 
 Usage:
-    python -m client.ingest_remote
-    python -m client.ingest_remote --check   # verify and fix existing data first
+    python -m client.ingest_chunks
+    python -m client.ingest_chunks --check   # verify and fix existing data first
 
 Environment variables:
     API_URL      - Base URL of the vector API (default: https://vector.korroni.cloud)
     API_KEY      - API key for authentication
     DATASETS     - Comma-separated dataset numbers (default: 1,2,3,...,12)
     CUDA_DEVICES - Comma-separated GPU indices (default: 0). Use "cpu" for CPU.
-    DATA_DIR     - Directory for downloaded JSONL files (default: data)
 """
 
 from __future__ import annotations
@@ -24,12 +23,10 @@ import random
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 import requests
 
 from client.chunk import Chunk, chunk_document
-from client.download import download_jsonl, load_jsonl
 from server.models.bge import BGEModel
 
 logger = logging.getLogger(__name__)
@@ -39,61 +36,114 @@ API_URL = os.environ.get("API_URL", "https://vector.korroni.cloud").rstrip("/")
 API_KEY = os.environ.get("API_KEY", "")
 DATASETS = os.environ.get("DATASETS", "1,2,3,4,5,6,7,8,9,10,11,12")
 CUDA_DEVICES = os.environ.get("CUDA_DEVICES", "0")
-DATA_DIR = Path(os.environ.get("DATA_DIR", "data"))
 BATCH_SIZE = 50
 
 
-def get_done_ids(dataset: int, session: requests.Session) -> set[str]:
-    """Fetch set of already-embedded efta_ids for a dataset."""
-    url = f"{API_URL}/ingest/done"
-    headers = {}
-    if API_KEY:
-        headers["X-API-Key"] = API_KEY
-
-    for attempt in range(3):
-        try:
-            resp = session.get(url, params={"dataset": dataset}, headers=headers, timeout=120)
-            resp.raise_for_status()
-            data = resp.json()
-            ids = set(data.get("efta_ids", []))
-            logger.info(f"Dataset {dataset}: {len(ids)} docs already done")
-            return ids
-        except requests.RequestException as e:
-            if attempt < 2:
-                wait = 2 ** attempt
-                logger.warning(f"Failed to fetch done IDs (attempt {attempt + 1}): {e}. Retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
-
-
-def get_chunk_status(efta_ids: list[str], session: requests.Session) -> dict[str, dict]:
-    """Fetch chunk status for a batch of efta_ids (max 50)."""
+def _headers() -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if API_KEY:
         headers["X-API-Key"] = API_KEY
+    return headers
+
+
+def get_pending_ids(dataset: int, session: requests.Session) -> list[str]:
+    """Fetch efta_ids that need chunking (docs with zero chunks)."""
+    all_ids: list[str] = []
+    offset = 0
+    limit = 10000
+
+    while True:
+        for attempt in range(3):
+            try:
+                resp = session.get(
+                    f"{API_URL}/ingest/documents/pending",
+                    params={"dataset": dataset, "status": "pending", "limit": limit, "offset": offset},
+                    headers=_headers(),
+                    timeout=120,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except requests.RequestException as e:
+                if attempt < 2:
+                    wait = 2 ** attempt
+                    logger.warning(f"Failed to fetch pending IDs (attempt {attempt + 1}): {e}. Retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    raise
+
+        batch_ids = data.get("efta_ids", [])
+        all_ids.extend(batch_ids)
+
+        if len(batch_ids) < limit:
+            break
+        offset += limit
+
+    logger.info(f"Dataset {dataset}: {len(all_ids)} docs pending")
+    return all_ids
+
+
+def get_all_ids(dataset: int, session: requests.Session) -> list[str]:
+    """Fetch all efta_ids for a dataset (for --check mode)."""
+    all_ids: list[str] = []
+    offset = 0
+    limit = 10000
+
+    while True:
+        resp = session.get(
+            f"{API_URL}/ingest/documents/pending",
+            params={"dataset": dataset, "status": "all", "limit": limit, "offset": offset},
+            headers=_headers(),
+            timeout=120,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        batch_ids = data.get("efta_ids", [])
+        all_ids.extend(batch_ids)
+
+        if len(batch_ids) < limit:
+            break
+        offset += limit
+
+    logger.info(f"Dataset {dataset}: {len(all_ids)} total docs")
+    return all_ids
+
+
+def fetch_documents(efta_ids: list[str], session: requests.Session) -> list[dict]:
+    """Fetch full doc records from API, reconstruct 'extracted' field."""
     resp = session.post(
-        f"{API_URL}/ingest/chunk_status",
+        f"{API_URL}/ingest/documents/fetch",
         json={"efta_ids": efta_ids},
-        headers=headers, timeout=60,
+        headers=_headers(),
+        timeout=60,
     )
     resp.raise_for_status()
-    return {item["efta_id"]: item for item in resp.json()}
+    rows = resp.json()
+
+    # Reconstruct the dict format chunk_document() expects, including
+    # the 'extracted' field inferred from word_count >= 5
+    docs = []
+    for row in rows:
+        docs.append({
+            "efta_id": row["efta_id"],
+            "dataset": row["dataset"],
+            "url": row.get("url", ""),
+            "pages": row.get("pages", 0),
+            "word_count": row.get("word_count", 0),
+            "text": row.get("text", ""),
+            "extracted": row.get("word_count", 0) >= 5,
+        })
+    return docs
 
 
-def post_batch(
-    documents: list[dict],
+def post_chunks(
     embeddable: list[Chunk],
     embeddings: list[list[float]],
     sentinels: list[Chunk],
     session: requests.Session,
     overwrite: bool = False,
 ) -> dict:
-    """POST a batch of documents + chunks with embeddings to the API."""
-    headers = {"Content-Type": "application/json"}
-    if API_KEY:
-        headers["X-API-Key"] = API_KEY
-
+    """POST chunks only to /ingest/chunks."""
     chunk_payloads = []
     for c, emb in zip(embeddable, embeddings):
         chunk_payloads.append({
@@ -114,25 +164,16 @@ def post_batch(
             "version": c.version,
         })
 
-    payload = {
-        "documents": [
-            {
-                "efta_id": d.get("efta_id") or d.get("efta", ""),
-                "dataset": int(d.get("dataset", 0)),
-                "url": d.get("url", ""),
-                "pages": d.get("pages", 0),
-                "word_count": d.get("word_count", 0),
-                "text": d.get("text", ""),
-            }
-            for d in documents
-        ],
-        "chunks": chunk_payloads,
-        "overwrite": overwrite,
-    }
+    payload = {"chunks": chunk_payloads, "overwrite": overwrite}
 
     for attempt in range(3):
         try:
-            resp = session.post(f"{API_URL}/ingest", json=payload, headers=headers, timeout=300)
+            resp = session.post(
+                f"{API_URL}/ingest/chunks",
+                json=payload,
+                headers=_headers(),
+                timeout=300,
+            )
             resp.raise_for_status()
             return resp.json()
         except requests.RequestException as e:
@@ -142,6 +183,18 @@ def post_batch(
                 time.sleep(wait)
             else:
                 raise
+
+
+def get_chunk_status(efta_ids: list[str], session: requests.Session) -> dict[str, dict]:
+    """Fetch chunk status for a batch of efta_ids (max 50)."""
+    resp = session.post(
+        f"{API_URL}/ingest/chunk_status",
+        json={"efta_ids": efta_ids},
+        headers=_headers(),
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return {item["efta_id"]: item for item in resp.json()}
 
 
 def load_models(devices: list[str]) -> list[BGEModel]:
@@ -180,7 +233,6 @@ def embed_chunks(models: list[BGEModel], chunks: list[Chunk]) -> list[list[float
 
 
 def _process_and_post(
-    batch_docs: list[dict],
     all_chunks: list[Chunk],
     models: list[BGEModel],
     session: requests.Session,
@@ -199,46 +251,36 @@ def _process_and_post(
     total_chunks = len(all_chunks)
 
     if total_chunks <= MAX_CHUNKS_PER_POST:
-        result = post_batch(batch_docs, embeddable, embeddings, sentinels, session, overwrite=overwrite)
+        result = post_chunks(embeddable, embeddings, sentinels, session, overwrite=overwrite)
         logger.info(
             f"{label}: done — "
-            f"{result.get('inserted_documents', 0)} docs, {result.get('inserted_chunks', 0)} chunks "
+            f"{result.get('inserted_chunks', 0)} chunks "
             f"({len(sentinels)} sentinels)"
         )
     else:
-        # Split into smaller uploads; need to split embeddable and sentinels separately
-        inserted_docs = 0
         inserted_chunks = 0
-        # Combine for sub-batching: embeddable first (paired with embeddings), then sentinels
-        emb_idx = 0
-        sent_idx = 0
-        sub_num = 0
-        sub_total = (total_chunks + MAX_CHUNKS_PER_POST - 1) // MAX_CHUNKS_PER_POST
-
         remaining_embeddable = list(embeddable)
         remaining_embeddings = list(embeddings)
         remaining_sentinels = list(sentinels)
+        sub_num = 0
+        sub_total = (total_chunks + MAX_CHUNKS_PER_POST - 1) // MAX_CHUNKS_PER_POST
 
         while remaining_embeddable or remaining_sentinels:
             sub_num += 1
             budget = MAX_CHUNKS_PER_POST
-            # Take from embeddable first
             sub_emb = remaining_embeddable[:budget]
             sub_emb_vecs = remaining_embeddings[:budget]
             remaining_embeddable = remaining_embeddable[budget:]
             remaining_embeddings = remaining_embeddings[budget:]
             budget -= len(sub_emb)
-            # Fill rest with sentinels
             sub_sent = remaining_sentinels[:budget]
             remaining_sentinels = remaining_sentinels[budget:]
 
-            sub_docs = batch_docs if sub_num == 1 else []
             logger.info(f"{label}: sub-batch {sub_num}/{sub_total} ({len(sub_emb) + len(sub_sent)} chunks)...")
-            result = post_batch(sub_docs, sub_emb, sub_emb_vecs, sub_sent, session, overwrite=overwrite)
-            inserted_docs += result.get('inserted_documents', 0)
+            result = post_chunks(sub_emb, sub_emb_vecs, sub_sent, session, overwrite=overwrite)
             inserted_chunks += result.get('inserted_chunks', 0)
 
-        logger.info(f"{label}: done — {inserted_docs} docs, {inserted_chunks} chunks ({len(sentinels)} sentinels)")
+        logger.info(f"{label}: done — {inserted_chunks} chunks ({len(sentinels)} sentinels)")
 
     return total_chunks
 
@@ -251,57 +293,54 @@ def ingest_dataset(
     """Full pipeline for a single dataset."""
     logger.info(f"=== Dataset {dataset} ===")
 
-    # Download JSONL
-    jsonl_path = download_jsonl(dataset, DATA_DIR)
-    docs = load_jsonl(jsonl_path)
-    logger.info(f"Loaded {len(docs)} documents")
+    # Get pending doc IDs from the database
+    pending_ids = get_pending_ids(dataset, session)
 
-    # Check what's already done
-    done_ids = get_done_ids(dataset, session)
+    if not pending_ids:
+        logger.info("No pending docs")
+        return {"dataset": dataset, "pending": 0, "chunks": 0}
 
-    # Filter to new docs and shuffle so concurrent workers diverge
-    new_docs = [d for d in docs if (d.get("efta_id") or d.get("efta")) not in done_ids]
-    random.shuffle(new_docs)
-    logger.info(f"{len(new_docs)} docs to process ({len(docs) - len(new_docs)} already done)")
+    # Shuffle for multi-worker divergence
+    random.shuffle(pending_ids)
+    initial_pending = len(pending_ids)
+    logger.info(f"{initial_pending} docs to process")
 
-    if not new_docs:
-        return {"dataset": dataset, "total": len(docs), "new": 0, "chunks": 0}
-
-    initial_new = len(new_docs)
-
-    # Process in batches, re-checking done list periodically
     total_chunks = 0
     batch_num = 0
-    while new_docs:
-        batch_docs = new_docs[:BATCH_SIZE]
-        new_docs = new_docs[BATCH_SIZE:]
+
+    while pending_ids:
+        batch_ids = pending_ids[:BATCH_SIZE]
+        pending_ids = pending_ids[BATCH_SIZE:]
         batch_num += 1
-        remaining = len(new_docs)
+        remaining = len(pending_ids)
+
+        # Fetch full doc records from API
+        docs = fetch_documents(batch_ids, session)
 
         # Chunk all docs in this batch
         all_chunks: list[Chunk] = []
-        for doc in batch_docs:
+        for doc in docs:
             doc_chunks = chunk_document(doc)
             all_chunks.extend(doc_chunks)
 
         # Embed and POST
-        logger.info(f"Batch {batch_num}: processing {len(all_chunks)} chunks from {len(batch_docs)} docs ({remaining} remaining)...")
+        logger.info(f"Batch {batch_num}: processing {len(all_chunks)} chunks from {len(docs)} docs ({remaining} remaining)...")
         total_chunks += _process_and_post(
-            batch_docs, all_chunks, models, session,
+            all_chunks, models, session,
             label=f"Batch {batch_num}",
         )
 
-        # Re-check done list every 10 batches to skip work other workers completed
-        if batch_num % 10 == 0 and new_docs:
-            done_ids = get_done_ids(dataset, session)
-            before = len(new_docs)
-            new_docs = [d for d in new_docs if (d.get("efta_id") or d.get("efta")) not in done_ids]
-            skipped = before - len(new_docs)
+        # Re-fetch pending list every 10 batches to skip work done by other workers
+        if batch_num % 10 == 0 and pending_ids:
+            fresh_ids = set(get_pending_ids(dataset, session))
+            before = len(pending_ids)
+            pending_ids = [eid for eid in pending_ids if eid in fresh_ids]
+            skipped = before - len(pending_ids)
             if skipped:
-                logger.info(f"Refreshed done list: skipped {skipped} docs completed by other workers")
+                logger.info(f"Refreshed pending list: skipped {skipped} docs completed by other workers")
 
     logger.info(f"Dataset {dataset} complete: {total_chunks} chunks embedded")
-    return {"dataset": dataset, "total": len(docs), "new": initial_new, "chunks": total_chunks}
+    return {"dataset": dataset, "pending": initial_pending, "chunks": total_chunks}
 
 
 def check_dataset(
@@ -311,19 +350,15 @@ def check_dataset(
 ) -> None:
     """Verify and fix existing data for a dataset.
 
-    Iterates through ALL docs in the JSONL, comparing expected vs actual state.
-    Fixes any discrepancies, then returns so normal ingestion can run after.
+    Fetches ALL docs from the database, compares expected vs actual chunks.
     """
     logger.info(f"=== Check Dataset {dataset} ===")
 
-    jsonl_path = download_jsonl(dataset, DATA_DIR)
-    docs = load_jsonl(jsonl_path)
-    logger.info(f"Loaded {len(docs)} documents for checking")
+    all_ids = get_all_ids(dataset, session)
+    logger.info(f"{len(all_ids)} documents to check")
 
-    # Counters
     stats = {
         "ok": 0,
-        "missing_doc": 0,
         "missing_chunks": 0,
         "wrong_chunk_count": 0,
         "missing_embeddings": 0,
@@ -331,38 +366,40 @@ def check_dataset(
         "version_mismatch": 0,
     }
 
-    to_fix: list[tuple[dict, list[Chunk], str]] = []  # (doc_dict, expected_chunks, reason)
+    to_fix: list[tuple[dict, list[Chunk], str]] = []
 
     # Check in batches of 50
-    for batch_start in range(0, len(docs), BATCH_SIZE):
-        batch_docs = docs[batch_start : batch_start + BATCH_SIZE]
-        efta_ids = [(d.get("efta_id") or d.get("efta", "")) for d in batch_docs]
+    for batch_start in range(0, len(all_ids), BATCH_SIZE):
+        batch_ids = all_ids[batch_start : batch_start + BATCH_SIZE]
+
+        # Fetch full docs from API
+        docs = fetch_documents(batch_ids, session)
+        docs_by_id = {d["efta_id"]: d for d in docs}
 
         # Get expected chunks for each doc
         expected: dict[str, list[Chunk]] = {}
-        for doc in batch_docs:
-            eid = doc.get("efta_id") or doc.get("efta", "")
-            expected[eid] = chunk_document(doc)
+        for doc in docs:
+            expected[doc["efta_id"]] = chunk_document(doc)
 
         # Get actual status from API
         try:
-            actual = get_chunk_status(efta_ids, session)
+            actual = get_chunk_status(batch_ids, session)
         except requests.RequestException as e:
             logger.warning(f"Failed to get chunk status for batch at {batch_start}: {e}")
             continue
 
         # Compare
-        for doc in batch_docs:
-            eid = doc.get("efta_id") or doc.get("efta", "")
-            exp_chunks = expected[eid]
+        for eid in batch_ids:
+            doc = docs_by_id.get(eid)
+            if doc is None:
+                continue
+
+            exp_chunks = expected.get(eid, [])
             exp_chunk_count = len(exp_chunks)
             exp_embedded = sum(1 for c in exp_chunks if not c.skip_embedding)
             act = actual.get(eid, {})
 
-            if not act or not act.get("has_doc", False):
-                stats["missing_doc"] += 1
-                to_fix.append((doc, exp_chunks, "missing_doc"))
-            elif act.get("chunk_count", 0) == 0:
+            if act.get("chunk_count", 0) == 0:
                 stats["missing_chunks"] += 1
                 to_fix.append((doc, exp_chunks, "missing_chunks"))
             elif act.get("chunk_count", 0) != exp_chunk_count:
@@ -381,10 +418,10 @@ def check_dataset(
                 stats["ok"] += 1
 
         if (batch_start // BATCH_SIZE) % 100 == 0:
-            checked = batch_start + len(batch_docs)
-            logger.info(f"Checked {checked}/{len(docs)} docs ({len(to_fix)} to fix)")
+            checked = batch_start + len(batch_ids)
+            logger.info(f"Checked {checked}/{len(all_ids)} docs ({len(to_fix)} to fix)")
 
-    logger.info(f"Dataset {dataset}: {len(docs)} docs checked")
+    logger.info(f"Dataset {dataset}: {len(all_ids)} docs checked")
     for reason, count in stats.items():
         logger.info(f"  {reason:25s}: {count:>8,}")
 
@@ -398,13 +435,12 @@ def check_dataset(
     fixed = 0
     for fix_start in range(0, len(to_fix), BATCH_SIZE):
         fix_batch = to_fix[fix_start : fix_start + BATCH_SIZE]
-        batch_docs_dicts = [item[0] for item in fix_batch]
         all_chunks: list[Chunk] = []
         for _, chunks, _ in fix_batch:
             all_chunks.extend(chunks)
 
         _process_and_post(
-            batch_docs_dicts, all_chunks, models, session,
+            all_chunks, models, session,
             overwrite=True,
             label=f"Fix batch {fix_start // BATCH_SIZE + 1}",
         )
@@ -421,7 +457,7 @@ def main():
         stream=sys.stderr,
     )
 
-    parser = argparse.ArgumentParser(description="GPU ingestion worker")
+    parser = argparse.ArgumentParser(description="GPU chunk worker")
     parser.add_argument("--check", action="store_true",
                         help="Verify and fix existing data before ingestion")
     args = parser.parse_args()
@@ -459,7 +495,7 @@ def main():
 
     logger.info("=== Done ===")
     for r in results:
-        logger.info(f"  Dataset {r['dataset']}: {r['total']} total, {r['new']} new, {r['chunks']} chunks")
+        logger.info(f"  Dataset {r['dataset']}: {r['pending']} pending, {r['chunks']} chunks")
 
 
 if __name__ == "__main__":

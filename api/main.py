@@ -98,3 +98,8 @@ def fuzzy_search_count_endpoint(req: search_module.CountRequest) -> search_modul
 @app.post("/similarity_search", dependencies=[Depends(verify_api_key)])
 def similarity_search_endpoint(req: search_module.SimilarRequest) -> search_module.SearchResponse:
     return search_module.similar(req)
+
+
+@app.get("/documents/{efta_id}", dependencies=[Depends(verify_api_key)])
+def get_document_endpoint(efta_id: str) -> search_module.DocumentResponse:
+    return search_module.get_document(efta_id)

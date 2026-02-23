@@ -5,8 +5,9 @@ Semantic search over ~1M DOJ Epstein Library documents using pgvector.
 ## Architecture
 
 ```
-Ingestion (one-time, distributed across contributor GPUs):
-  Download JSONL → Chunk text → Embed on GPU → POST to API → Insert into Postgres
+Ingestion (two-stage):
+  Stage 1 (CPU): Stream JSONL → POST doc rows to API → Version-gated upsert into Postgres
+  Stage 2 (GPU): Fetch pending docs from API → Chunk text → Embed on GPU → POST chunks to API
 
 Search (production):
   User query → FastAPI → Embed on CPU → pgvector search → Return results
@@ -99,6 +100,56 @@ curl http://localhost:8000/ingest/stats -H "X-API-Key: $INGEST_API_KEY"
 curl "http://localhost:8000/ingest/stats?dataset=9" -H "X-API-Key: $INGEST_API_KEY"
 ```
 
+#### POST /ingest/documents
+
+Upsert document rows with version-gated overwrites. Documents are only updated if the incoming `version` is strictly greater than the existing version — same or lower version is a no-op. This makes the endpoint fully idempotent. Requires `INGEST_API_KEY`.
+
+```bash
+curl -X POST http://localhost:8000/ingest/documents \
+  -H "X-API-Key: $INGEST_API_KEY" -H "Content-Type: application/json" \
+  -d '{"documents": [{"efta_id": "EFTA00123456", "dataset": 9, "word_count": 186, "version": 1}]}'
+```
+
+#### GET /ingest/documents/pending
+
+Returns efta_ids for a dataset filtered by chunking status. Requires `INGEST_API_KEY`.
+
+```bash
+# Docs with zero chunks (default)
+curl "http://localhost:8000/ingest/documents/pending?dataset=9" -H "X-API-Key: $INGEST_API_KEY"
+
+# All docs in dataset
+curl "http://localhost:8000/ingest/documents/pending?dataset=9&status=all" -H "X-API-Key: $INGEST_API_KEY"
+```
+
+Parameters: `dataset` (required), `status` (`pending` or `all`, default `pending`), `limit` (default 10000), `offset` (default 0).
+
+Response: `{"efta_ids": [...], "count": 12345}`
+
+#### POST /ingest/documents/fetch
+
+Returns full document records by efta_id list (max 50). Used by the GPU worker to get text for chunking. Requires `INGEST_API_KEY`.
+
+```bash
+curl -X POST http://localhost:8000/ingest/documents/fetch \
+  -H "X-API-Key: $INGEST_API_KEY" -H "Content-Type: application/json" \
+  -d '{"efta_ids": ["EFTA00123456", "EFTA00123457"]}'
+```
+
+Response: `[{"efta_id": "...", "dataset": 9, "url": "...", "pages": 5, "word_count": 186, "text": "...", "version": 1}]`
+
+#### POST /ingest/chunks
+
+Accept pre-embedded chunks without document metadata. Validates embedding dimensions, casts to halfvec, uses ON CONFLICT DO NOTHING (or deletes+reinserts with `overwrite: true`). Requires `INGEST_API_KEY`.
+
+```bash
+curl -X POST http://localhost:8000/ingest/chunks \
+  -H "X-API-Key: $INGEST_API_KEY" -H "Content-Type: application/json" \
+  -d '{"chunks": [{"efta_id": "EFTA00123456", "chunk_index": 0, "total_chunks": 1, "text": "...", "embedding": [...]}]}'
+```
+
+Response: `{"inserted_chunks": 1}`
+
 #### POST /ingest/chunk_status
 
 Check per-document chunk status for a batch of efta_ids (max 50). Returns whether the document row exists, chunk counts, embedding counts, and version info. Requires `INGEST_API_KEY`.
@@ -111,30 +162,90 @@ curl -X POST http://localhost:8000/ingest/chunk_status \
 
 Response: `[{"efta_id": "...", "has_doc": true, "doc_word_count": 186, "doc_version": 1, "chunk_count": 3, "embedded_count": 3, "chunk_version": 1}]`
 
-#### POST /ingest
-
-Accepts batched documents + chunks with pre-computed embeddings. Chunks may have `null` embedding (sentinel chunks for unchunkable documents).
-
-Additional parameter: `overwrite` (default false) — when true, existing document rows are updated and existing chunks are deleted and re-inserted.
-
 #### GET /health
 
 ```bash
 curl http://localhost:8000/health
 ```
 
+## How Ingestion Works
+
+Ingestion is split into two independent stages:
+
+### Stage 1: Document Loading (CPU)
+
+`ingest_docs.py` streams JSONL files line by line and bulk-loads document rows into the `documents` table via `POST /ingest/documents`. No GPU needed.
+
+```bash
+python -m client.ingest_docs API_KEY                   # all datasets
+python -m client.ingest_docs API_KEY --datasets 9,10   # specific datasets
+python -m client.ingest_docs API_KEY --version 2       # set version (for OCR v2)
+```
+
+Documents are version-gated: only updated if the incoming version is strictly greater than the existing version. This makes it safe to re-run at any time — Postgres handles dedup.
+
+Data sizes: ~3.6 GB total, 1.2M docs across 12 datasets. The big three are set_9 (463k docs, 1.7 GB), set_10 (496k docs, 1.4 GB), and set_11 (226k docs, 420 MB). JSONL is streamed line by line to avoid loading multi-GB files into memory.
+
+### Stage 2: Chunk Embedding (GPU)
+
+`ingest_chunks.py` fetches pending documents (those with zero chunks) from the API, chunks the text, embeds on GPU, and uploads chunks.
+
+```bash
+python -m client.ingest_chunks
+python -m client.ingest_chunks --check   # verify and fix existing data first
+```
+
+The GPU worker never downloads JSONL — it reads documents from the database via the API. This means documents must be loaded first (Stage 1).
+
+### Pipeline
+
+```
+Stage 1 (CPU):
+  JSONL file ──stream──> POST /ingest/documents ──> documents table
+
+Stage 2 (GPU):
+  GET /ingest/documents/pending ──> fetch doc text ──> chunk ──> embed on GPU ──> POST /ingest/chunks ──> chunks table
+```
+
+**Chunking** — Each document is split into ~200-word chunks (~1000 chars) with 30-word overlap using `RecursiveCharacterTextSplitter`. Each chunk gets a contextual prefix: `[EFTA00123456 | Dataset 9]`.
+
+  - **Short docs** (< 200 words): embedded as a single chunk
+  - **Long docs**: split into multiple chunks with overlap for context continuity
+  - **Sentinel chunks**: documents that fail quality checks (< 5 words, or < 50% alphabetic characters) get a single chunk with `skip_embedding=True`. The document text is still stored in the chunk so it appears in text search and fuzzy search via the `tsv` column — it just doesn't get a vector embedding, so it won't appear in vector/similarity search.
+
+**Extracted field inference** — The `extracted` field exists in JSONL but not in the `documents` table. It has a perfect 1:1 correlation with `word_count >= 5`. The GPU worker infers `extracted = (word_count >= 5)` when reconstructing docs for chunking.
+
+**Embedding** — Embeddable chunks are encoded with bge-large-en-v1.5 (1024 dims) on the local GPU. Multi-GPU is supported — chunks are interleaved across devices and run in parallel.
+
+### Database Schema
+
+```
+documents                          chunks
+├── efta_id (PK)                   ├── efta_id (FK → documents)
+├── dataset                        ├── chunk_index
+├── url                            ├── total_chunks
+├── pages                          ├── text
+├── word_count                     ├── embedding (halfvec(1024), nullable)
+├── text                           ├── tsv (tsvector, auto-generated)
+└── version                        └── version
+                                   PK: (efta_id, chunk_index)
+```
+
+- `embedding` is `halfvec(1024)` — half-precision vectors for 50% storage savings with HNSW index
+- `tsv` is auto-populated by a trigger from `text` using `to_tsvector('english', text)`, with a GIN index for full-text search
+- Sentinel chunks have `embedding = NULL` — excluded from vector/similarity search by `WHERE embedding IS NOT NULL`, but included in text/fuzzy search via `tsv`
+
 ## Distributed GPU Ingestion
 
-Contributors run a Docker container on their own GPU to embed documents. The container downloads source data, embeds locally, and uploads results to the API — no database credentials needed.
+Contributors run a Docker container on their own GPU to embed documents. The container fetches pending docs from the API, embeds locally, and uploads chunks — no database credentials or JSONL downloads needed.
 
 ```
 Container (your GPU)                 Server (vector.korroni.cloud)
-1. Download JSONL locally
-2. GET /ingest/done?dataset=9  ───>  Returns set of completed efta_ids
-3. Skip done docs
-4. Chunk + embed (local GPU)
-5. POST /ingest               ───>  Inserts docs + chunks into Postgres
-6. Repeat until done
+1. GET /documents/pending     ───>  Returns efta_ids needing chunks
+2. POST /documents/fetch      ───>  Returns full doc records with text
+3. Chunk + embed (local GPU)
+4. POST /ingest/chunks        ───>  Inserts chunks into Postgres
+5. Repeat until done
 ```
 
 ### Build
@@ -163,16 +274,7 @@ docker run --gpus all \
   epstein-ingest
 ```
 
-To persist downloaded JSONL files between runs (avoids re-downloading), mount a volume:
-
-```bash
-docker run --gpus all \
-  -e API_URL="https://vector.korroni.cloud" \
-  -e API_KEY="your-ingest-api-key" \
-  -e DATASETS="9" \
-  -v /path/to/storage:/app/data \
-  epstein-ingest
-```
+No data volume mount needed — the GPU worker reads documents from the API, not from local JSONL files.
 
 ### Multi-GPU
 
@@ -189,19 +291,38 @@ docker run --gpus all -e CUDA_DEVICES="1" -e API_KEY="key" -e DATASETS="9" epste
 
 ### Check mode
 
-Run with `--check` to verify and fix existing data before normal ingestion. This compares every doc in the JSONL against the database, fixing missing docs, missing chunks, wrong chunk counts, missing embeddings, stale metadata, and version mismatches.
+Run with `--check` to verify and fix existing data before normal ingestion. This is useful after code changes (e.g. updated chunking logic or a new schema migration) where existing data might not match the expected state.
 
 ```bash
 docker run --gpus all \
   -e API_URL="https://vector.korroni.cloud" \
   -e API_KEY="your-ingest-api-key" \
   -e DATASETS="9" \
-  epstein-ingest python -m client.ingest_remote --check
+  epstein-ingest python -m client.ingest_chunks --check
 ```
+
+How it works:
+
+1. Fetches all doc IDs for the dataset via `GET /ingest/documents/pending?status=all`
+2. For each batch of 50 IDs, fetches full docs via `POST /ingest/documents/fetch`
+3. Runs `chunk_document()` locally to compute the expected chunks
+4. Queries the actual state from the API via `POST /ingest/chunk_status`
+5. Compares expected vs actual and flags any mismatches:
+
+| Check | Condition | Meaning |
+|-------|-----------|---------|
+| `missing_chunks` | Doc exists but has 0 chunks | Chunks were lost or never inserted |
+| `wrong_chunk_count` | Chunk count doesn't match expected | Chunking logic changed |
+| `missing_embeddings` | Fewer embeddings than expected | Some embeddable chunks have NULL embedding |
+| `stale_metadata` | `word_count` doesn't match | Document metadata is outdated |
+| `version_mismatch` | `doc_version` or `chunk_version` < 1 | Pre-migration data without version column |
+
+6. Re-embeds and uploads all flagged docs with `overwrite=True`
+7. After check completes, normal ingestion runs to pick up any remaining pending docs
 
 ### Resumability
 
-The worker checks `/ingest/done` before processing each dataset and skips already-embedded documents. You can kill and restart at any time. Multiple workers on the same dataset are safe — `ON CONFLICT DO NOTHING` handles overlap.
+The worker fetches pending doc IDs (docs with zero chunks) before processing each dataset. Every 10 batches it re-fetches the pending list to skip docs completed by other concurrent workers. You can kill and restart at any time. Multiple workers on the same dataset are safe — `ON CONFLICT DO NOTHING` handles overlap.
 
 ### Container environment variables
 
