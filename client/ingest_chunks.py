@@ -21,14 +21,17 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import queue
 import random
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 import requests
 
-from client.chunk import Chunk, chunk_document
+from client.chunk import Chunk, MIN_WORD_COUNT, chunk_document
 from server.models.bge import BGEModel
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,37 @@ API_KEY = os.environ.get("API_KEY", "")
 DATASETS = os.environ.get("DATASETS", "1,2,3,4,5,6,7,8,9,10,11,12")
 CUDA_DEVICES = os.environ.get("CUDA_DEVICES", "0")
 BATCH_SIZE = 50
+CHECKER_BATCH_SIZE = int(os.environ.get("CHECKER_BATCH_SIZE", "200"))
+TARGET_EMBED_CHUNKS = int(os.environ.get("TARGET_EMBED_CHUNKS", "500"))
+
+
+@dataclass
+class RechunkWorkItem:
+    chunks: list[Chunk]
+    doc_text_hashes: dict[str, str]
+    batch_label: str
+
+
+class PipelineStats:
+    """Thread-safe counter for super-check statistics."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._counts: dict[str, int] = {
+            "sentinel_skipped": 0,
+            "already_synced": 0,
+            "stamped": 0,
+            "rechunked": 0,
+            "missing_chunks": 0,
+        }
+
+    def inc(self, key: str, n: int = 1) -> None:
+        with self._lock:
+            self._counts[key] += n
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._counts)
 
 
 def _headers() -> dict[str, str]:
@@ -499,6 +533,213 @@ def stamp_hashes(stamps: list[dict], session: requests.Session) -> dict:
     return resp.json()
 
 
+def _checker_thread(
+    all_ids: list[str],
+    work_queue: queue.Queue | None,
+    stats: PipelineStats,
+    shutdown: threading.Event,
+    dry_run: bool,
+    dataset: int,
+) -> None:
+    """Producer: checks docs in batches, stamps matching, enqueues rechunks."""
+    session = requests.Session()
+    try:
+        for batch_start in range(0, len(all_ids), CHECKER_BATCH_SIZE):
+            if shutdown.is_set():
+                logger.info("Checker: shutdown requested, stopping")
+                return
+
+            big_batch_ids = all_ids[batch_start : batch_start + CHECKER_BATCH_SIZE]
+            to_stamp: list[dict] = []
+            rechunk_docs: list[tuple[dict, list[Chunk]]] = []
+
+            # Sub-batch API calls at BATCH_SIZE (server limit)
+            for sub_start in range(0, len(big_batch_ids), BATCH_SIZE):
+                if shutdown.is_set():
+                    return
+
+                batch_ids = big_batch_ids[sub_start : sub_start + BATCH_SIZE]
+
+                docs = fetch_documents(batch_ids, session)
+                docs_by_id = {d["efta_id"]: d for d in docs}
+
+                try:
+                    actual = get_chunk_status(batch_ids, session)
+                except requests.RequestException as e:
+                    logger.warning(f"Failed to get chunk status for batch at {batch_start + sub_start}: {e}")
+                    continue
+
+                to_fetch_and_compare: list[str] = []
+
+                for eid in batch_ids:
+                    doc = docs_by_id.get(eid)
+                    if doc is None:
+                        continue
+
+                    act = actual.get(eid, {})
+                    doc_hash = doc.get("text_hash")
+                    chunk_hash = act.get("chunk_text_hash")
+                    chunk_count = act.get("chunk_count", 0)
+                    word_count = doc.get("word_count", 0)
+
+                    if word_count < MIN_WORD_COUNT:
+                        stats.inc("sentinel_skipped")
+                        continue
+
+                    if chunk_count == 0:
+                        exp_chunks = chunk_document(doc)
+                        rechunk_docs.append((doc, exp_chunks))
+                        stats.inc("missing_chunks")
+                    elif chunk_hash and doc_hash and chunk_hash == doc_hash:
+                        stats.inc("already_synced")
+                    elif chunk_hash is None and chunk_count > 0:
+                        to_fetch_and_compare.append(eid)
+                    elif chunk_hash and doc_hash and chunk_hash != doc_hash:
+                        exp_chunks = chunk_document(doc)
+                        rechunk_docs.append((doc, exp_chunks))
+                        stats.inc("rechunked")
+
+                # Fetch and compare chunk texts
+                if to_fetch_and_compare:
+                    chunk_data = fetch_chunks(to_fetch_and_compare, session)
+
+                    for eid in to_fetch_and_compare:
+                        doc = docs_by_id.get(eid)
+                        if doc is None:
+                            continue
+
+                        exp_chunks = chunk_document(doc)
+                        exp_texts = [c.text for c in exp_chunks]
+
+                        actual_chunks = chunk_data.get(eid, [])
+                        actual_texts = [c["text"] for c in sorted(actual_chunks, key=lambda x: x["chunk_index"])]
+
+                        if exp_texts == actual_texts:
+                            doc_hash = doc.get("text_hash")
+                            if doc_hash:
+                                to_stamp.append({"efta_id": eid, "doc_text_hash": doc_hash})
+                            stats.inc("stamped")
+                        else:
+                            rechunk_docs.append((doc, exp_chunks))
+                            stats.inc("rechunked")
+
+            # Stamp matching chunks
+            if to_stamp:
+                if dry_run:
+                    pass  # counted in stats, reported in final summary
+                else:
+                    try:
+                        stamp_hashes(to_stamp, session)
+                        logger.info(f"Stamped {len(to_stamp)} docs' chunks")
+                    except requests.RequestException as e:
+                        logger.warning(f"Failed to stamp hashes: {e}")
+
+            # Enqueue or log rechunk work
+            if rechunk_docs:
+                if dry_run:
+                    logger.info(f"[DRY RUN] Would re-chunk {len(rechunk_docs)} docs ({sum(len(c) for _, c in rechunk_docs)} chunks)")
+                elif work_queue is not None:
+                    all_chunks: list[Chunk] = []
+                    batch_hashes: dict[str, str] = {}
+                    for doc, chunks in rechunk_docs:
+                        all_chunks.extend(chunks)
+                        if doc.get("text_hash"):
+                            batch_hashes[doc["efta_id"]] = doc["text_hash"]
+                    item = RechunkWorkItem(
+                        chunks=all_chunks,
+                        doc_text_hashes=batch_hashes,
+                        batch_label=f"Super-check batch {batch_start // CHECKER_BATCH_SIZE + 1}",
+                    )
+                    while not shutdown.is_set():
+                        try:
+                            work_queue.put(item, timeout=1.0)
+                            break
+                        except queue.Full:
+                            continue
+
+            # Progress log
+            checked = batch_start + len(big_batch_ids)
+            snap = stats.snapshot()
+            if dry_run:
+                up_to_date = snap['already_synced'] + snap['sentinel_skipped']
+                need_work = snap['stamped'] + snap['rechunked'] + snap['missing_chunks']
+                logger.info(
+                    f"Dry run: {checked}/{len(all_ids)} docs — "
+                    f"{up_to_date} up-to-date, {need_work} need work"
+                )
+            else:
+                logger.info(
+                    f"Checker: {checked}/{len(all_ids)} docs — "
+                    f"synced={snap['already_synced']}, stamped={snap['stamped']}, "
+                    f"rechunked={snap['rechunked']}, missing={snap['missing_chunks']}, "
+                    f"sentinel_skipped={snap['sentinel_skipped']}"
+                )
+    except Exception:
+        logger.exception("Checker thread crashed")
+        shutdown.set()
+        raise
+    finally:
+        if work_queue is not None:
+            work_queue.put(None)
+
+
+def _embedder_thread(
+    work_queue: queue.Queue,
+    models: list[BGEModel],
+    shutdown: threading.Event,
+) -> None:
+    """Consumer: pulls rechunk items from queue, embeds, and posts."""
+    session = requests.Session()
+    accumulated_chunks: list[Chunk] = []
+    accumulated_hashes: dict[str, str] = {}
+    batch_num = 0
+
+    try:
+        while True:
+            try:
+                item = work_queue.get(timeout=1.0)
+            except queue.Empty:
+                if shutdown.is_set():
+                    logger.warning("Embedder: shutdown requested, stopping")
+                    return
+                continue
+
+            if item is None:
+                break
+
+            accumulated_chunks.extend(item.chunks)
+            accumulated_hashes.update(item.doc_text_hashes)
+
+            while len(accumulated_chunks) >= TARGET_EMBED_CHUNKS:
+                batch_num += 1
+                batch = accumulated_chunks[:TARGET_EMBED_CHUNKS]
+                accumulated_chunks = accumulated_chunks[TARGET_EMBED_CHUNKS:]
+                batch_eids = {c.efta_id for c in batch}
+                batch_hashes = {k: v for k, v in accumulated_hashes.items() if k in batch_eids}
+                _process_and_post(
+                    batch, models, session,
+                    overwrite=True,
+                    label=f"Embedder batch {batch_num}",
+                    doc_text_hashes=batch_hashes,
+                )
+
+        # Flush remaining chunks
+        if accumulated_chunks:
+            batch_num += 1
+            batch_eids = {c.efta_id for c in accumulated_chunks}
+            batch_hashes = {k: v for k, v in accumulated_hashes.items() if k in batch_eids}
+            _process_and_post(
+                accumulated_chunks, models, session,
+                overwrite=True,
+                label=f"Embedder batch {batch_num} (final)",
+                doc_text_hashes=batch_hashes,
+            )
+    except Exception:
+        logger.exception("Embedder thread crashed")
+        shutdown.set()
+        raise
+
+
 def super_check_dataset(
     dataset: int,
     models: list[BGEModel],
@@ -507,8 +748,12 @@ def super_check_dataset(
 ) -> None:
     """Compare text_hash between documents and chunks, fix mismatches.
 
-    For chunks missing doc_text_hash (NULL), fetches actual chunk texts and
-    compares against expected. Stamps matching chunks, re-chunks mismatches.
+    Uses a producer/consumer pipeline:
+    - Checker thread: fetches docs, compares hashes, stamps matching, enqueues rechunks
+    - Embedder thread: pulls rechunk items, embeds, posts
+
+    For --dry-run, the checker runs inline on the main thread with no embedder.
+    Each thread creates its own requests.Session (not thread-safe to share).
     """
     mode = "DRY RUN" if dry_run else "LIVE"
     logger.info(f"=== Super-Check Dataset {dataset} ({mode}) ===")
@@ -516,129 +761,58 @@ def super_check_dataset(
     all_ids = get_all_ids(dataset, session)
     logger.info(f"{len(all_ids)} documents to super-check")
 
-    stats = {
-        "already_synced": 0,
-        "stamped": 0,
-        "rechunked": 0,
-        "missing_chunks": 0,
-    }
+    stats = PipelineStats()
+    shutdown = threading.Event()
 
-    for batch_start in range(0, len(all_ids), BATCH_SIZE):
-        batch_ids = all_ids[batch_start : batch_start + BATCH_SIZE]
+    if dry_run:
+        # Run checker inline on main thread — no embedder, no queue
+        _checker_thread(all_ids, None, stats, shutdown, True, dataset)
+    else:
+        work_queue: queue.Queue[RechunkWorkItem | None] = queue.Queue(maxsize=20)
+        checker_error: list[BaseException | None] = [None]
+        embedder_error: list[BaseException | None] = [None]
 
-        # Fetch docs (with text_hash) and chunk status in parallel
-        docs = fetch_documents(batch_ids, session)
-        docs_by_id = {d["efta_id"]: d for d in docs}
+        def checker_wrapper():
+            try:
+                _checker_thread(all_ids, work_queue, stats, shutdown, False, dataset)
+            except Exception as e:
+                checker_error[0] = e
 
-        try:
-            actual = get_chunk_status(batch_ids, session)
-        except requests.RequestException as e:
-            logger.warning(f"Failed to get chunk status for batch at {batch_start}: {e}")
-            continue
+        def embedder_wrapper():
+            try:
+                _embedder_thread(work_queue, models, shutdown)
+            except Exception as e:
+                embedder_error[0] = e
 
-        # Categorize docs
-        to_stamp: list[dict] = []  # chunks match, just need hash stamped
-        to_rechunk: list[tuple[dict, list[Chunk]]] = []  # chunks stale, need re-embed
-        to_fetch_and_compare: list[str] = []  # need to compare actual vs expected
+        checker = threading.Thread(target=checker_wrapper, name="checker")
+        embedder = threading.Thread(target=embedder_wrapper, name="embedder")
 
-        for eid in batch_ids:
-            doc = docs_by_id.get(eid)
-            if doc is None:
-                continue
+        checker.start()
+        embedder.start()
 
-            act = actual.get(eid, {})
-            doc_hash = doc.get("text_hash")
-            chunk_hash = act.get("chunk_text_hash")
-            chunk_count = act.get("chunk_count", 0)
+        checker.join()
+        embedder.join()
 
-            if chunk_count == 0:
-                # No chunks at all — need full re-chunk
-                exp_chunks = chunk_document(doc)
-                to_rechunk.append((doc, exp_chunks))
-                stats["missing_chunks"] += 1
-            elif chunk_hash and doc_hash and chunk_hash == doc_hash:
-                # Already synced
-                stats["already_synced"] += 1
-            elif chunk_hash is None and chunk_count > 0:
-                # Chunks exist but no hash — need to compare texts
-                to_fetch_and_compare.append(eid)
-            elif chunk_hash and doc_hash and chunk_hash != doc_hash:
-                # Hash mismatch — chunks are stale
-                exp_chunks = chunk_document(doc)
-                to_rechunk.append((doc, exp_chunks))
-                stats["rechunked"] += 1
+        if checker_error[0]:
+            raise checker_error[0]
+        if embedder_error[0]:
+            raise embedder_error[0]
 
-        # Fetch actual chunk texts for comparison (batches of 50)
-        if to_fetch_and_compare:
-            chunk_data = fetch_chunks(to_fetch_and_compare, session)
-
-            for eid in to_fetch_and_compare:
-                doc = docs_by_id.get(eid)
-                if doc is None:
-                    continue
-
-                # Get expected chunks
-                exp_chunks = chunk_document(doc)
-                exp_texts = [c.text for c in exp_chunks]
-
-                # Get actual chunk texts
-                actual_chunks = chunk_data.get(eid, [])
-                actual_texts = [c["text"] for c in sorted(actual_chunks, key=lambda x: x["chunk_index"])]
-
-                if exp_texts == actual_texts:
-                    # Chunks match — just stamp the hash
-                    doc_hash = doc.get("text_hash")
-                    if doc_hash:
-                        to_stamp.append({"efta_id": eid, "doc_text_hash": doc_hash})
-                    stats["stamped"] += 1
-                else:
-                    # Chunks differ — re-chunk and re-embed
-                    to_rechunk.append((doc, exp_chunks))
-                    stats["rechunked"] += 1
-
-        # Stamp matching chunks
-        if to_stamp:
-            if dry_run:
-                logger.info(f"[DRY RUN] Would stamp {len(to_stamp)} docs: {[s['efta_id'] for s in to_stamp[:5]]}{'...' if len(to_stamp) > 5 else ''}")
-            else:
-                try:
-                    stamp_hashes(to_stamp, session)
-                    logger.info(f"Stamped {len(to_stamp)} docs' chunks")
-                except requests.RequestException as e:
-                    logger.warning(f"Failed to stamp hashes: {e}")
-
-        # Re-chunk and re-embed mismatches
-        if to_rechunk:
-            rechunk_ids = [doc["efta_id"] for doc, _ in to_rechunk]
-            if dry_run:
-                for doc, chunks in to_rechunk:
-                    logger.info(f"[DRY RUN] Would re-chunk {doc['efta_id']} (word_count={doc.get('word_count', 0)}, {len(chunks)} chunks)")
-            else:
-                all_chunks: list[Chunk] = []
-                batch_hashes: dict[str, str] = {}
-                for doc, chunks in to_rechunk:
-                    all_chunks.extend(chunks)
-                    if doc.get("text_hash"):
-                        batch_hashes[doc["efta_id"]] = doc["text_hash"]
-
-                _process_and_post(
-                    all_chunks, models, session,
-                    overwrite=True,
-                    label=f"Super-check fix batch {batch_start // BATCH_SIZE + 1}",
-                    doc_text_hashes=batch_hashes,
-                )
-
-        if (batch_start // BATCH_SIZE) % 100 == 0:
-            checked = batch_start + len(batch_ids)
-            logger.info(
-                f"Super-checked {checked}/{len(all_ids)} docs — "
-                f"synced={stats['already_synced']}, stamped={stats['stamped']}, "
-                f"rechunked={stats['rechunked']}, missing={stats['missing_chunks']}"
-            )
-
-    logger.info(f"Dataset {dataset} super-check complete:")
-    for reason, count in stats.items():
-        logger.info(f"  {reason:25s}: {count:>8,}")
+    snap = stats.snapshot()
+    up_to_date = snap['already_synced'] + snap['sentinel_skipped']
+    chunks_ok = snap['stamped']
+    to_reembed = snap['rechunked'] + snap['missing_chunks']
+    total = up_to_date + chunks_ok + to_reembed
+    if dry_run:
+        logger.info(
+            f"Dataset {dataset} dry run — {total:,} docs: "
+            f"{up_to_date:,} good, {chunks_ok:,} chunks ok but need hash written, {to_reembed:,} need re-embed"
+        )
+    else:
+        logger.info(
+            f"Dataset {dataset} super-check complete — {total:,} docs: "
+            f"{up_to_date:,} good, {chunks_ok:,} hashes written, {to_reembed:,} re-embedded"
+        )
 
 
 def main():

@@ -203,8 +203,10 @@ Data sizes: ~3.6 GB total, 1.2M docs across 12 datasets. The big three are set_9
 `ingest_chunks.py` fetches pending documents (those with zero chunks) from the API, chunks the text, embeds on GPU, and uploads chunks.
 
 ```bash
-uv run python -m client.ingest_chunks
-uv run python -m client.ingest_chunks --check   # verify and fix existing data first
+uv run python -m client.ingest_chunks                      # embed pending docs
+uv run python -m client.ingest_chunks --check              # verify and fix existing data first
+uv run python -m client.ingest_chunks --super-check        # compare text_hash, stamp or re-embed
+uv run python -m client.ingest_chunks --super-check --dry-run  # report what would change
 ```
 
 The GPU worker never downloads JSONL — it reads documents from the database via the API. This means documents must be loaded first (Stage 1).
@@ -332,6 +334,35 @@ How it works:
 6. Re-embeds and uploads all flagged docs with `overwrite=True`
 7. After check completes, normal ingestion runs to pick up any remaining pending docs
 
+### Super-check mode
+
+Run with `--super-check` to compare the `text_hash` on every document against its chunks, stamping hashes where chunks match and re-embedding where they don't. This is the go-to after re-importing documents with updated text (e.g. OCR v2) — it figures out which chunks are still valid and only re-embeds the ones that changed.
+
+```bash
+# Dry run — report what would change, no GPU work
+docker run --gpus all \
+  -e API_KEY="your-ingest-api-key" \
+  -e DATASETS="9" \
+  epstein-ingest --super-check --dry-run
+
+# Live — stamp matching chunks and re-embed stale ones
+docker run --gpus all \
+  -e API_KEY="your-ingest-api-key" \
+  -e DATASETS="9" \
+  epstein-ingest --super-check
+```
+
+How it works:
+
+1. Fetches all doc IDs for the dataset
+2. For each doc, compares the document's `text_hash` against the hash stored on its chunks
+3. Classifies each doc into one of:
+   - **Good** — hash matches, or doc is too short to embed (< 5 words). No action needed.
+   - **Chunks ok, need hash written** — chunk texts match the current document text but chunks don't have a hash yet. Writes the hash without re-embedding.
+   - **Need re-embed** — chunk texts are stale (hash mismatch) or chunks are missing entirely. Re-chunks and re-embeds.
+
+In live mode, this runs as a two-thread pipeline: a **checker** thread handles network I/O (fetching docs, comparing hashes, stamping) while an **embedder** thread handles GPU work (embedding and uploading). The checker runs ahead and feeds work to the embedder through a bounded queue, so the GPU stays busy instead of waiting on network calls.
+
 ### Resumability
 
 The worker fetches pending doc IDs (docs with zero chunks) before processing each dataset. Every 10 batches it re-fetches the pending list to skip docs completed by other concurrent workers. You can kill and restart at any time. Multiple workers on the same dataset are safe — `ON CONFLICT DO NOTHING` handles overlap.
@@ -344,6 +375,8 @@ The worker fetches pending doc IDs (docs with zero chunks) before processing eac
 | `API_KEY` | Ingest API key (get from maintainer) | *(required)* |
 | `DATASETS` | Comma-separated dataset numbers | `1,2,3,4,5,6,7,8,9,10,11,12` |
 | `CUDA_DEVICES` | GPU indices, or `cpu` | `0` |
+| `CHECKER_BATCH_SIZE` | Docs per checker batch (super-check) | `200` |
+| `TARGET_EMBED_CHUNKS` | Chunks to accumulate before embedding (super-check) | `500` |
 
 ## Web Frontend
 
