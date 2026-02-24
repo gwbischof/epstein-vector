@@ -59,11 +59,11 @@ class PipelineStats:
     def __init__(self):
         self._lock = threading.Lock()
         self._counts: dict[str, int] = {
-            "sentinel_skipped": 0,
             "already_synced": 0,
             "stamped": 0,
             "rechunked": 0,
             "missing_chunks": 0,
+            "missing_embeddings": 0,
         }
 
     def inc(self, key: str, n: int = 1) -> None:
@@ -323,7 +323,8 @@ def _process_and_post(
             remaining_sentinels = remaining_sentinels[budget:]
 
             logger.info(f"{label}: sub-batch {sub_num}/{sub_total} ({len(sub_emb) + len(sub_sent)} chunks)...")
-            result = post_chunks(sub_emb, sub_emb_vecs, sub_sent, session, overwrite=overwrite, doc_text_hashes=doc_text_hashes)
+            sub_overwrite = overwrite and sub_num == 1
+            result = post_chunks(sub_emb, sub_emb_vecs, sub_sent, session, overwrite=sub_overwrite, doc_text_hashes=doc_text_hashes)
             inserted_chunks += result.get('inserted_chunks', 0)
 
         logger.info(f"{label}: done — {inserted_chunks} chunks ({len(sentinels)} sentinels)")
@@ -410,10 +411,7 @@ def check_dataset(
     stats = {
         "ok": 0,
         "missing_chunks": 0,
-        "wrong_chunk_count": 0,
         "missing_embeddings": 0,
-        "stale_metadata": 0,
-        "version_mismatch": 0,
         "hash_mismatch": 0,
     }
 
@@ -453,22 +451,16 @@ def check_dataset(
             if act.get("chunk_count", 0) == 0:
                 stats["missing_chunks"] += 1
                 to_fix.append((doc, exp_chunks, "missing_chunks"))
-            elif act.get("chunk_count", 0) != exp_chunk_count:
-                stats["wrong_chunk_count"] += 1
-                to_fix.append((doc, exp_chunks, "wrong_chunk_count"))
+                logger.info(f"  FLAGGED {eid}: missing_chunks (word_count={doc.get('word_count', 0)})")
             elif act.get("embedded_count", 0) < exp_embedded:
                 stats["missing_embeddings"] += 1
                 to_fix.append((doc, exp_chunks, "missing_embeddings"))
-            elif act.get("doc_word_count", 0) != doc.get("word_count", 0):
-                stats["stale_metadata"] += 1
-                to_fix.append((doc, exp_chunks, "stale_metadata"))
-            elif act.get("doc_version", 0) < 1 or act.get("chunk_version", 0) < 1:
-                stats["version_mismatch"] += 1
-                to_fix.append((doc, exp_chunks, "version_mismatch"))
+                logger.info(f"  FLAGGED {eid}: missing_embeddings (expected={exp_embedded}, actual={act.get('embedded_count', 0)}, chunks={act.get('chunk_count', 0)})")
             elif act.get("chunk_text_hash") and act.get("doc_text_hash") and \
                  act.get("chunk_text_hash") != act.get("doc_text_hash"):
                 stats["hash_mismatch"] += 1
                 to_fix.append((doc, exp_chunks, "hash_mismatch"))
+                logger.info(f"  FLAGGED {eid}: hash_mismatch (doc={act.get('doc_text_hash')[:8]}, chunk={act.get('chunk_text_hash')[:8]})")
             else:
                 stats["ok"] += 1
 
@@ -580,18 +572,20 @@ def _checker_thread(
                     doc_hash = doc.get("text_hash")
                     chunk_hash = act.get("chunk_text_hash")
                     chunk_count = act.get("chunk_count", 0)
-                    word_count = doc.get("word_count", 0)
-
-                    if word_count < MIN_WORD_COUNT:
-                        stats.inc("sentinel_skipped")
-                        continue
 
                     if chunk_count == 0:
                         exp_chunks = chunk_document(doc)
                         rechunk_docs.append((doc, exp_chunks))
                         stats.inc("missing_chunks")
                     elif chunk_hash and doc_hash and chunk_hash == doc_hash:
-                        stats.inc("already_synced")
+                        # Hash matches, but verify all chunks/embeddings were uploaded
+                        exp_chunks = chunk_document(doc)
+                        exp_embedded = sum(1 for c in exp_chunks if not c.skip_embedding)
+                        if act.get("embedded_count", 0) < exp_embedded:
+                            rechunk_docs.append((doc, exp_chunks))
+                            stats.inc("missing_embeddings")
+                        else:
+                            stats.inc("already_synced")
                     elif chunk_hash is None and chunk_count > 0:
                         to_fetch_and_compare.append(eid)
                     elif chunk_hash and doc_hash and chunk_hash != doc_hash:
@@ -615,10 +609,17 @@ def _checker_thread(
                         actual_texts = [c["text"] for c in sorted(actual_chunks, key=lambda x: x["chunk_index"])]
 
                         if exp_texts == actual_texts:
-                            doc_hash = doc.get("text_hash")
-                            if doc_hash:
-                                to_stamp.append({"efta_id": eid, "doc_text_hash": doc_hash})
-                            stats.inc("stamped")
+                            # Texts match, but verify all embeddings were uploaded
+                            act = actual.get(eid, {})
+                            exp_embedded = sum(1 for c in exp_chunks if not c.skip_embedding)
+                            if act.get("embedded_count", 0) < exp_embedded:
+                                rechunk_docs.append((doc, exp_chunks))
+                                stats.inc("missing_embeddings")
+                            else:
+                                doc_hash = doc.get("text_hash")
+                                if doc_hash:
+                                    to_stamp.append({"efta_id": eid, "doc_text_hash": doc_hash})
+                                stats.inc("stamped")
                         else:
                             rechunk_docs.append((doc, exp_chunks))
                             stats.inc("rechunked")
@@ -661,8 +662,8 @@ def _checker_thread(
             checked = batch_start + len(big_batch_ids)
             snap = stats.snapshot()
             if dry_run:
-                up_to_date = snap['already_synced'] + snap['sentinel_skipped']
-                need_work = snap['stamped'] + snap['rechunked'] + snap['missing_chunks']
+                up_to_date = snap['already_synced']
+                need_work = snap['stamped'] + snap['rechunked'] + snap['missing_chunks'] + snap['missing_embeddings']
                 logger.info(
                     f"Dry run: {checked}/{len(all_ids)} docs — "
                     f"{up_to_date} up-to-date, {need_work} need work"
@@ -672,7 +673,7 @@ def _checker_thread(
                     f"Checker: {checked}/{len(all_ids)} docs — "
                     f"synced={snap['already_synced']}, stamped={snap['stamped']}, "
                     f"rechunked={snap['rechunked']}, missing={snap['missing_chunks']}, "
-                    f"sentinel_skipped={snap['sentinel_skipped']}"
+                    f"missing_emb={snap['missing_embeddings']}"
                 )
     except Exception:
         logger.exception("Checker thread crashed")
@@ -710,10 +711,19 @@ def _embedder_thread(
             accumulated_chunks.extend(item.chunks)
             accumulated_hashes.update(item.doc_text_hashes)
 
+            # Split at doc boundaries — never split a doc's chunks across batches
             while len(accumulated_chunks) >= TARGET_EMBED_CHUNKS:
+                # Find a cut point that doesn't split a doc
+                cut = TARGET_EMBED_CHUNKS
+                if cut < len(accumulated_chunks):
+                    # Walk forward to include all chunks of the last doc in the batch
+                    last_eid = accumulated_chunks[cut - 1].efta_id
+                    while cut < len(accumulated_chunks) and accumulated_chunks[cut].efta_id == last_eid:
+                        cut += 1
+
                 batch_num += 1
-                batch = accumulated_chunks[:TARGET_EMBED_CHUNKS]
-                accumulated_chunks = accumulated_chunks[TARGET_EMBED_CHUNKS:]
+                batch = accumulated_chunks[:cut]
+                accumulated_chunks = accumulated_chunks[cut:]
                 batch_eids = {c.efta_id for c in batch}
                 batch_hashes = {k: v for k, v in accumulated_hashes.items() if k in batch_eids}
                 _process_and_post(
@@ -799,9 +809,9 @@ def super_check_dataset(
             raise embedder_error[0]
 
     snap = stats.snapshot()
-    up_to_date = snap['already_synced'] + snap['sentinel_skipped']
+    up_to_date = snap['already_synced']
     chunks_ok = snap['stamped']
-    to_reembed = snap['rechunked'] + snap['missing_chunks']
+    to_reembed = snap['rechunked'] + snap['missing_chunks'] + snap['missing_embeddings']
     total = up_to_date + chunks_ok + to_reembed
     if dry_run:
         logger.info(

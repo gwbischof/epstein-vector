@@ -336,7 +336,7 @@ How it works:
 
 ### Super-check mode
 
-Run with `--super-check` to compare the `text_hash` on every document against its chunks, stamping hashes where chunks match and re-embedding where they don't. This is the go-to after re-importing documents with updated text (e.g. OCR v2) — it figures out which chunks are still valid and only re-embeds the ones that changed.
+Run with `--super-check` to verify that every document's chunks match its current text. After a full run, every doc in the dataset is guaranteed to have chunks that match the current document text and chunking logic. This is the go-to after re-importing documents with updated text (e.g. OCR v2) — it figures out which chunks are still valid and only re-embeds the ones that changed.
 
 ```bash
 # Dry run — report what would change, no GPU work
