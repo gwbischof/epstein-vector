@@ -73,7 +73,7 @@ jobs:
             PG_CONTAINER="epstein-vector-pg"
             IMAGE_NAME="${{ needs.build-and-push.outputs.image }}"
             NETWORK="${{ secrets.DOCKER_NETWORK || 'root_default' }}"
-            DOMAIN="vector.korroni.cloud"
+            DOMAIN="${{ vars.DEPLOY_DOMAIN }}"
 
             echo "Starting deployment of Epstein Vector Search..."
 
