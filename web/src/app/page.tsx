@@ -127,7 +127,7 @@ export default function SearchPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.8, delay: 0.9 }}
-                  className="w-full max-w-md"
+                  className="w-full max-w-md mt-4"
                 >
                   <AnimatePresence mode="wait">
                     {mode === "semantic" ? (
