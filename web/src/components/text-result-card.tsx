@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, ExternalLink, Hash, BookOpen, Sparkles } from "lucide-react";
+import { FileText, ExternalLink, Hash, BookOpen, Sparkles, AlignLeft } from "lucide-react";
 import type { TextResult } from "@/lib/types";
 import { eftaUrl } from "@/lib/utils";
+import { getDocument } from "@/lib/api";
 
 interface TextResultCardProps {
   result: TextResult;
@@ -12,6 +14,9 @@ interface TextResultCardProps {
 }
 
 export function TextResultCard({ result, index, onFindSimilar }: TextResultCardProps) {
+  const [fullText, setFullText] = useState<string | null>(null);
+  const [fullTextLoading, setFullTextLoading] = useState(false);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -86,7 +91,30 @@ export function TextResultCard({ result, index, onFindSimilar }: TextResultCardP
             More like this
           </button>
         )}
+        <button
+          onClick={async () => {
+            if (fullText !== null) { setFullText(null); return; }
+            const apiKey = localStorage.getItem("epstein-api-key") ?? "";
+            if (!apiKey) return;
+            setFullTextLoading(true);
+            try {
+              const doc = await getDocument(result.efta_id, apiKey);
+              setFullText(doc.text);
+            } catch { setFullText("Failed to load document text."); }
+            finally { setFullTextLoading(false); }
+          }}
+          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-400 transition-colors"
+        >
+          <AlignLeft className="w-3 h-3" />
+          {fullTextLoading ? "Loading..." : fullText !== null ? "Hide full text" : "Full text"}
+        </button>
       </div>
+
+      {fullText !== null && (
+        <div className="mt-3 p-3 rounded-lg bg-slate-900/50 border border-slate-700/30 max-h-96 overflow-y-auto">
+          <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono leading-relaxed">{fullText}</pre>
+        </div>
+      )}
     </motion.div>
   );
 }

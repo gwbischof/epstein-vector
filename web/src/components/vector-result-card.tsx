@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, ChevronDown, ChevronUp, ExternalLink, Layers, Sparkles } from "lucide-react";
+import { FileText, ChevronDown, ChevronUp, ExternalLink, Layers, Sparkles, AlignLeft } from "lucide-react";
 import type { VectorResult } from "@/lib/types";
 import { eftaUrl, highlightExactTerms, cleanText } from "@/lib/utils";
+import { getDocument } from "@/lib/api";
 
 function scoreColor(score: number): string {
   if (score >= 0.5) return "bg-emerald-500";
@@ -27,6 +28,8 @@ interface VectorResultCardProps {
 
 export function VectorResultCard({ result, index, query, onFindSimilar }: VectorResultCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [fullText, setFullText] = useState<string | null>(null);
+  const [fullTextLoading, setFullTextLoading] = useState(false);
   const cleaned = cleanText(result.text);
   const preview = cleaned.length > 300 && !expanded ? cleaned.slice(0, 300) + "..." : cleaned;
 
@@ -140,7 +143,30 @@ export function VectorResultCard({ result, index, query, onFindSimilar }: Vector
             More like this
           </button>
         )}
+        <button
+          onClick={async () => {
+            if (fullText !== null) { setFullText(null); return; }
+            const apiKey = localStorage.getItem("epstein-api-key") ?? "";
+            if (!apiKey) return;
+            setFullTextLoading(true);
+            try {
+              const doc = await getDocument(result.efta_id, apiKey);
+              setFullText(doc.text);
+            } catch { setFullText("Failed to load document text."); }
+            finally { setFullTextLoading(false); }
+          }}
+          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-400 transition-colors"
+        >
+          <AlignLeft className="w-3 h-3" />
+          {fullTextLoading ? "Loading..." : fullText !== null ? "Hide full text" : "Full text"}
+        </button>
       </div>
+
+      {fullText !== null && (
+        <div className="mt-3 p-3 rounded-lg bg-slate-900/50 border border-slate-700/30 max-h-96 overflow-y-auto">
+          <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono leading-relaxed">{fullText}</pre>
+        </div>
+      )}
     </motion.div>
   );
 }

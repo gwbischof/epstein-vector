@@ -59,6 +59,25 @@ export async function textSearch(
   return res.json();
 }
 
+export async function getDocument(
+  eftaId: string,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<{ text: string }> {
+  const res = await fetch(`${BASE_URL}/get_document/${eftaId}`, {
+    headers: { "X-API-Key": apiKey },
+    signal,
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Invalid API key");
+    if (res.status === 404) throw new Error("Document not found");
+    throw new Error(`Failed to fetch document (${res.status})`);
+  }
+
+  return res.json();
+}
+
 export async function similarSearch(
   eftaId: string,
   chunkIndex: number,
