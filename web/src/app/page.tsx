@@ -80,14 +80,14 @@ export default function SearchPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0, y: -30 }}
                 transition={{ duration: 0.4 }}
-                className="flex-1 flex flex-col items-center max-w-2xl w-full pt-16"
+                className="flex flex-col items-center max-w-2xl w-full pt-10 pb-8"
               >
                 {/* Title */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                  className="text-center mb-10"
+                  className="text-center mb-6"
                 >
                   <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-100 mb-3">
                     <span className="text-cyan-400">Epstein</span> Document Search
@@ -123,13 +123,14 @@ export default function SearchPage() {
                   />
                 </motion.div>
 
-                {/* Search tips */}
+                {/* Info cards: search tips + MCP guide side by side */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.8, delay: 0.9 }}
-                  className="w-full max-w-md mt-4"
+                  className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4"
                 >
+                  {/* Search tips */}
                   <AnimatePresence mode="wait">
                     {mode === "semantic" ? (
                       <motion.div
@@ -141,19 +142,19 @@ export default function SearchPage() {
                         className="glass rounded-xl overflow-hidden glow-cyan"
                         style={{ borderTopColor: "rgba(34, 211, 238, 0.25)", borderTopWidth: 2 }}
                       >
-                        <div className="px-6 pt-5 pb-4">
-                          <div className="flex items-center gap-2.5 mb-1">
-                            <Brain className="w-4 h-4 text-cyan-400" />
-                            <span className="text-sm font-semibold tracking-wide text-cyan-400">Semantic Search</span>
+                        <div className="px-5 pt-4 pb-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Brain className="w-3.5 h-3.5 text-cyan-400" />
+                            <span className="text-xs font-semibold tracking-wide text-cyan-400">Semantic Search</span>
                           </div>
-                          <p className="text-sm text-slate-500 leading-relaxed">
+                          <p className="text-xs text-slate-500 leading-relaxed">
                             Searches by meaning, not exact words.
                             Finds relevant documents even when they use different terminology.
                           </p>
                         </div>
-                        <div className="border-t border-slate-700/40 px-6 py-4">
-                          <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-3">Example queries</div>
-                          <div className="space-y-1">
+                        <div className="border-t border-slate-700/40 px-5 py-3">
+                          <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-2">Example queries</div>
+                          <div className="space-y-0.5">
                             {[
                               "recruiting underage girls from schools",
                               "payments to politicians",
@@ -163,10 +164,10 @@ export default function SearchPage() {
                               <button
                                 key={q}
                                 onClick={() => setQuery(q)}
-                                className="group flex items-center gap-2 w-full text-left rounded-lg px-3 py-2 -mx-3 hover:bg-cyan-500/5 transition-colors"
+                                className="group flex items-center gap-1.5 w-full text-left rounded-md px-2 py-1.5 -mx-2 hover:bg-cyan-500/5 transition-colors"
                               >
                                 <ChevronRight className="w-3 h-3 text-slate-700 group-hover:text-cyan-400/60 transition-colors shrink-0" />
-                                <span className="font-mono text-xs text-slate-400 group-hover:text-cyan-300 transition-colors">{q}</span>
+                                <span className="font-mono text-[11px] text-slate-400 group-hover:text-cyan-300 transition-colors">{q}</span>
                               </button>
                             ))}
                           </div>
@@ -182,34 +183,34 @@ export default function SearchPage() {
                         className="glass rounded-xl overflow-hidden glow-violet"
                         style={{ borderTopColor: "rgba(139, 92, 246, 0.25)", borderTopWidth: 2 }}
                       >
-                        <div className="px-6 pt-5 pb-4">
-                          <div className="flex items-center gap-2.5 mb-1">
-                            <Type className="w-4 h-4 text-violet-400" />
-                            <span className="text-sm font-semibold tracking-wide text-violet-400">Keyword Search</span>
+                        <div className="px-5 pt-4 pb-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Type className="w-3.5 h-3.5 text-violet-400" />
+                            <span className="text-xs font-semibold tracking-wide text-violet-400">Keyword Search</span>
                           </div>
-                          <p className="text-sm text-slate-500 leading-relaxed">
+                          <p className="text-xs text-slate-500 leading-relaxed">
                             Exact term matching ranked by relevance.
                             Best for specific names, phrases, and document references.
                           </p>
                         </div>
-                        <div className="border-t border-slate-700/40 px-6 py-4">
-                          <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-3">Syntax reference</div>
-                          <div className="space-y-1">
+                        <div className="border-t border-slate-700/40 px-5 py-3">
+                          <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-2">Syntax reference</div>
+                          <div className="space-y-0.5">
                             {[
-                              { syntax: "Maxwell flight", note: "AND — both required" },
-                              { syntax: "\"wire transfer\"", note: "exact phrase" },
-                              { syntax: "Maxwell OR Brunel", note: "either term" },
-                              { syntax: "island -vacation", note: "exclude term" },
-                              { syntax: "maxw*", note: "prefix wildcard" },
-                              { syntax: "+flight +log", note: "require terms" },
+                              { syntax: "Maxwell flight", note: "AND" },
+                              { syntax: "\"wire transfer\"", note: "phrase" },
+                              { syntax: "Maxwell OR Brunel", note: "either" },
+                              { syntax: "island -vacation", note: "exclude" },
+                              { syntax: "maxw*", note: "wildcard" },
+                              { syntax: "+flight +log", note: "require" },
                             ].map((ex) => (
                               <button
                                 key={ex.syntax}
                                 onClick={() => setQuery(ex.syntax)}
-                                className="group flex items-baseline gap-3 w-full text-left rounded-lg px-3 py-1.5 -mx-3 hover:bg-violet-500/5 transition-colors"
+                                className="group flex items-baseline gap-2 w-full text-left rounded-md px-2 py-1 -mx-2 hover:bg-violet-500/5 transition-colors"
                               >
-                                <code className="font-mono text-xs text-slate-400 group-hover:text-violet-300 transition-colors shrink-0">{ex.syntax}</code>
-                                <span className="text-xs text-slate-600">{ex.note}</span>
+                                <code className="font-mono text-[11px] text-slate-400 group-hover:text-violet-300 transition-colors shrink-0">{ex.syntax}</code>
+                                <span className="text-[11px] text-slate-600">{ex.note}</span>
                               </button>
                             ))}
                           </div>
@@ -217,12 +218,12 @@ export default function SearchPage() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </motion.div>
 
-                {/* MCP connector guide */}
-                {process.env.NEXT_PUBLIC_MCP_URL && (
-                  <McpGuide url={process.env.NEXT_PUBLIC_MCP_URL} />
-                )}
+                  {/* MCP connector guide */}
+                  {process.env.NEXT_PUBLIC_MCP_URL && (
+                    <McpGuide url={process.env.NEXT_PUBLIC_MCP_URL} />
+                  )}
+                </motion.div>
               </motion.div>
             ) : (
               /* Results state */
@@ -311,58 +312,51 @@ function McpGuide({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.8, delay: 1.1 }}
-      className="w-full max-w-md mt-8"
-    >
-      <div className="glass rounded-xl overflow-hidden" style={{ borderTopColor: "rgba(100, 200, 130, 0.25)", borderTopWidth: 2 }}>
-        <div className="px-6 pt-5 pb-4">
-          <div className="flex items-center gap-2.5 mb-1">
-            <Plug className="w-4 h-4 text-emerald-400" />
-            <span className="text-sm font-semibold tracking-wide text-emerald-400">Use with AI Assistants</span>
-          </div>
-          <p className="text-sm text-slate-500 leading-relaxed">
-            Connect this search engine to ChatGPT or Claude as an MCP tool.
-          </p>
+    <div className="glass rounded-xl overflow-hidden" style={{ borderTopColor: "rgba(100, 200, 130, 0.25)", borderTopWidth: 2 }}>
+      <div className="px-5 pt-4 pb-3">
+        <div className="flex items-center gap-2 mb-1">
+          <Plug className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="text-xs font-semibold tracking-wide text-emerald-400">Use with AI Assistants</span>
         </div>
-        <div className="border-t border-slate-700/40 px-6 py-4 space-y-4">
-          {/* URL with copy */}
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-2">MCP Server URL</div>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 font-mono text-xs text-slate-400 bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/30 truncate">
-                {url}
-              </code>
-              <button
-                onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                className="shrink-0 p-2 rounded-lg border border-slate-700/30 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors"
-              >
-                {copied
-                  ? <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  : <Copy className="w-3.5 h-3.5 text-slate-500" />}
-              </button>
-            </div>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Connect this search engine to ChatGPT or Claude as an MCP tool.
+        </p>
+      </div>
+      <div className="border-t border-slate-700/40 px-5 py-3 space-y-3">
+        {/* URL with copy */}
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-1.5">MCP Server URL</div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 font-mono text-[11px] text-slate-400 bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/30 truncate">
+              {url}
+            </code>
+            <button
+              onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+              className="shrink-0 p-2 rounded-lg border border-slate-700/30 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors"
+            >
+              {copied
+                ? <Check className="w-3.5 h-3.5 text-emerald-400" />
+                : <Copy className="w-3.5 h-3.5 text-slate-500" />}
+            </button>
           </div>
+        </div>
 
-          {/* Instructions */}
-          <div className="space-y-3">
-            <div>
-              <div className="text-xs font-medium text-slate-400 mb-1">Claude</div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Settings &rarr; Connectors &rarr; Add custom connector &rarr; paste URL
-              </p>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-slate-400 mb-1">ChatGPT</div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Settings &rarr; Apps &rarr; Advanced settings &rarr; Developer mode &rarr; Create app &rarr; paste URL
-              </p>
-            </div>
+        {/* Instructions */}
+        <div className="space-y-2">
+          <div>
+            <div className="text-xs font-medium text-slate-400 mb-0.5">Claude</div>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Settings &rarr; Connectors &rarr; Add custom connector &rarr; paste URL
+            </p>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-slate-400 mb-0.5">ChatGPT</div>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Settings &rarr; Apps &rarr; Advanced settings &rarr; Developer mode &rarr; Create app &rarr; paste URL
+            </p>
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
