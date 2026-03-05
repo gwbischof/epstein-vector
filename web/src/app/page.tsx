@@ -53,10 +53,15 @@ export default function SearchPage() {
             transition={{ duration: 0.5 }}
             className="flex items-center gap-2"
           >
-            <div className="w-2 h-2 rounded-full bg-cyan-400 pulse-dot" />
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-medium">
-              DOJ EFTA Document Search
-            </span>
+            <button
+              onClick={() => window.location.reload()}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              <div className="w-2 h-2 rounded-full bg-cyan-400 pulse-dot" />
+              <span className="text-xs uppercase tracking-[0.2em] text-slate-400 font-medium">
+                DOJ EFTA Document Search
+              </span>
+            </button>
           </motion.div>
 
           <motion.div
