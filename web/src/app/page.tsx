@@ -127,20 +127,20 @@ export default function SearchPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.8, delay: 0.9 }}
-                  className="mt-10 w-full grid grid-cols-1 sm:grid-cols-2 gap-3"
+                  className="mt-10 w-full grid grid-cols-1 sm:grid-cols-2 gap-4"
                 >
-                  <div className="glass rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2.5">
-                      <Brain className="w-3.5 h-3.5 text-cyan-400/70" />
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-cyan-400/70 font-medium">Semantic</span>
+                  <div className="glass rounded-xl p-6">
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <Brain className="w-4 h-4 text-cyan-400/70" />
+                      <span className="text-xs uppercase tracking-[0.2em] text-cyan-400/70 font-medium">Semantic</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                    <p className="text-sm text-slate-500 leading-relaxed mb-4">
                       Searches by <span className="text-slate-400">meaning</span>, not exact words.
                       Finds relevant documents even when they use different terminology.
                       Best for open-ended research.
                     </p>
-                    <div className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">Try these</div>
-                    <div className="space-y-2">
+                    <div className="text-xs uppercase tracking-widest text-slate-600 mb-3">Try these</div>
+                    <div className="space-y-2.5">
                       {[
                         "recruiting underage girls from schools",
                         "payments to politicians",
@@ -150,24 +150,24 @@ export default function SearchPage() {
                         <button
                           key={q}
                           onClick={() => { setQuery(q); setMode("semantic"); }}
-                          className="block w-full text-left font-mono text-[10px] text-slate-400 hover:text-cyan-400 transition-colors leading-relaxed"
+                          className="block w-full text-left font-mono text-xs text-slate-400 hover:text-cyan-400 transition-colors leading-relaxed"
                         >
                           {q}
                         </button>
                       ))}
                     </div>
                   </div>
-                  <div className="glass rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2.5">
-                      <Type className="w-3.5 h-3.5 text-violet-400/70" />
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-violet-400/70 font-medium">Keyword</span>
+                  <div className="glass rounded-xl p-6">
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <Type className="w-4 h-4 text-violet-400/70" />
+                      <span className="text-xs uppercase tracking-[0.2em] text-violet-400/70 font-medium">Keyword</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                    <p className="text-sm text-slate-500 leading-relaxed mb-4">
                       Exact term matching ranked by relevance.
                       Best for specific names, phrases, and document references.
                     </p>
-                    <div className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">Syntax</div>
-                    <table className="w-full text-[11px]">
+                    <div className="text-xs uppercase tracking-widest text-slate-600 mb-3">Syntax</div>
+                    <table className="w-full text-sm">
                       <tbody>
                         {[
                           { syntax: "Maxwell flight", note: "AND — both required" },
@@ -178,15 +178,15 @@ export default function SearchPage() {
                           { syntax: "+flight +log", note: "require terms" },
                         ].map((ex) => (
                           <tr key={ex.syntax} className="group">
-                            <td className="py-0.5 pr-3 whitespace-nowrap align-baseline">
+                            <td className="py-1 pr-4 whitespace-nowrap align-baseline">
                               <button
                                 onClick={() => { setQuery(ex.syntax); setMode("keyword"); }}
-                                className="font-mono text-[10px] text-slate-400 group-hover:text-violet-400 transition-colors"
+                                className="font-mono text-xs text-slate-400 group-hover:text-violet-400 transition-colors"
                               >
                                 {ex.syntax}
                               </button>
                             </td>
-                            <td className="py-0.5 text-slate-600 align-baseline">{ex.note}</td>
+                            <td className="py-1 text-slate-600 align-baseline">{ex.note}</td>
                           </tr>
                         ))}
                       </tbody>
