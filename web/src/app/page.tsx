@@ -73,7 +73,7 @@ export default function SearchPage() {
         </header>
 
         {/* Main content area */}
-        <main className="flex-1 flex flex-col items-center px-6">
+        <main className="flex-1 flex flex-col items-center justify-center px-6">
           <AnimatePresence mode="wait">
             {!hasResults ? (
               /* Hero / initial state */
@@ -83,7 +83,7 @@ export default function SearchPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0, y: -30 }}
                 transition={{ duration: 0.4 }}
-                className="flex flex-col items-center max-w-2xl w-full pt-10 pb-8"
+                className="flex flex-col items-center max-w-2xl w-full pb-8"
               >
                 {/* Title */}
                 <motion.div
