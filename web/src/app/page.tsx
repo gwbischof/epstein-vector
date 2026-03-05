@@ -127,71 +127,90 @@ export default function SearchPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.8, delay: 0.9 }}
-                  className="mt-10 w-full grid grid-cols-1 sm:grid-cols-2 gap-4"
+                  className="mt-10 w-full max-w-md"
                 >
-                  <div className="glass rounded-xl p-6">
-                    <div className="flex items-center gap-2.5 mb-3">
-                      <Brain className="w-4 h-4 text-cyan-400/70" />
-                      <span className="text-xs uppercase tracking-[0.2em] text-cyan-400/70 font-medium">Semantic</span>
-                    </div>
-                    <p className="text-sm text-slate-500 leading-relaxed mb-4">
-                      Searches by <span className="text-slate-400">meaning</span>, not exact words.
-                      Finds relevant documents even when they use different terminology.
-                      Best for open-ended research.
-                    </p>
-                    <div className="text-xs uppercase tracking-widest text-slate-600 mb-3">Try these</div>
-                    <div className="space-y-2.5">
-                      {[
-                        "recruiting underage girls from schools",
-                        "payments to politicians",
-                        "destroying evidence before investigation",
-                        "private flights to Caribbean islands",
-                      ].map((q) => (
-                        <button
-                          key={q}
-                          onClick={() => { setQuery(q); setMode("semantic"); }}
-                          className="block w-full text-left font-mono text-xs text-slate-400 hover:text-cyan-400 transition-colors leading-relaxed"
-                        >
-                          {q}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="glass rounded-xl p-6">
-                    <div className="flex items-center gap-2.5 mb-3">
-                      <Type className="w-4 h-4 text-violet-400/70" />
-                      <span className="text-xs uppercase tracking-[0.2em] text-violet-400/70 font-medium">Keyword</span>
-                    </div>
-                    <p className="text-sm text-slate-500 leading-relaxed mb-4">
-                      Exact term matching ranked by relevance.
-                      Best for specific names, phrases, and document references.
-                    </p>
-                    <div className="text-xs uppercase tracking-widest text-slate-600 mb-3">Syntax</div>
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {[
-                          { syntax: "Maxwell flight", note: "AND — both required" },
-                          { syntax: "\"wire transfer\"", note: "exact phrase" },
-                          { syntax: "Maxwell OR Brunel", note: "either term" },
-                          { syntax: "island -vacation", note: "exclude term" },
-                          { syntax: "maxw*", note: "prefix wildcard" },
-                          { syntax: "+flight +log", note: "require terms" },
-                        ].map((ex) => (
-                          <tr key={ex.syntax} className="group">
-                            <td className="py-1 pr-4 whitespace-nowrap align-baseline">
-                              <button
-                                onClick={() => { setQuery(ex.syntax); setMode("keyword"); }}
-                                className="font-mono text-xs text-slate-400 group-hover:text-violet-400 transition-colors"
-                              >
-                                {ex.syntax}
-                              </button>
-                            </td>
-                            <td className="py-1 text-slate-600 align-baseline">{ex.note}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <AnimatePresence mode="wait">
+                    {mode === "semantic" ? (
+                      <motion.div
+                        key="semantic-tip"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.25 }}
+                        className="glass rounded-xl p-6"
+                      >
+                        <div className="flex items-center gap-2.5 mb-3">
+                          <Brain className="w-4 h-4 text-cyan-400/70" />
+                          <span className="text-xs uppercase tracking-[0.2em] text-cyan-400/70 font-medium">Semantic Search</span>
+                        </div>
+                        <p className="text-sm text-slate-500 leading-relaxed mb-4">
+                          Searches by <span className="text-slate-400">meaning</span>, not exact words.
+                          Finds relevant documents even when they use different terminology.
+                          Best for open-ended research.
+                        </p>
+                        <div className="text-xs uppercase tracking-widest text-slate-600 mb-3">Try these</div>
+                        <div className="space-y-2.5">
+                          {[
+                            "recruiting underage girls from schools",
+                            "payments to politicians",
+                            "destroying evidence before investigation",
+                            "private flights to Caribbean islands",
+                          ].map((q) => (
+                            <button
+                              key={q}
+                              onClick={() => setQuery(q)}
+                              className="block w-full text-left font-mono text-xs text-slate-400 hover:text-cyan-400 transition-colors leading-relaxed"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="keyword-tip"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.25 }}
+                        className="glass rounded-xl p-6"
+                      >
+                        <div className="flex items-center gap-2.5 mb-3">
+                          <Type className="w-4 h-4 text-violet-400/70" />
+                          <span className="text-xs uppercase tracking-[0.2em] text-violet-400/70 font-medium">Keyword Search</span>
+                        </div>
+                        <p className="text-sm text-slate-500 leading-relaxed mb-4">
+                          Exact term matching ranked by relevance.
+                          Best for specific names, phrases, and document references.
+                        </p>
+                        <div className="text-xs uppercase tracking-widest text-slate-600 mb-3">Syntax</div>
+                        <table className="w-full text-sm">
+                          <tbody>
+                            {[
+                              { syntax: "Maxwell flight", note: "AND — both required" },
+                              { syntax: "\"wire transfer\"", note: "exact phrase" },
+                              { syntax: "Maxwell OR Brunel", note: "either term" },
+                              { syntax: "island -vacation", note: "exclude term" },
+                              { syntax: "maxw*", note: "prefix wildcard" },
+                              { syntax: "+flight +log", note: "require terms" },
+                            ].map((ex) => (
+                              <tr key={ex.syntax} className="group">
+                                <td className="py-1 pr-4 whitespace-nowrap align-baseline">
+                                  <button
+                                    onClick={() => setQuery(ex.syntax)}
+                                    className="font-mono text-xs text-slate-400 group-hover:text-violet-400 transition-colors"
+                                  >
+                                    {ex.syntax}
+                                  </button>
+                                </td>
+                                <td className="py-1 text-slate-600 align-baseline">{ex.note}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               </motion.div>
             ) : (
