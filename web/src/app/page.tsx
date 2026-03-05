@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Brain, Type } from "lucide-react";
 import { Starfield } from "@/components/starfield";
 import { ApiKeyInput } from "@/components/api-key-input";
 import { SearchBar } from "@/components/search-bar";
@@ -153,6 +153,39 @@ export default function SearchPage() {
                         <span className="text-[9px] text-slate-600 uppercase tracking-wider">({eq.desc})</span>
                       </button>
                     ))}
+                  </div>
+                </motion.div>
+
+                {/* Search tips */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.8, delay: 0.9 }}
+                  className="mt-10 w-full grid grid-cols-1 sm:grid-cols-2 gap-3"
+                >
+                  <div className="glass rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <Brain className="w-3.5 h-3.5 text-cyan-400/70" />
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-cyan-400/70 font-medium">Semantic</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Searches by <span className="text-slate-400">meaning</span>, not exact words. Good for concepts and topics
+                      &mdash; <span className="text-slate-400 font-mono text-[10px]">payments to politicians</span> finds
+                      documents about donations, wire transfers, and lobbying even if those exact words aren&apos;t used.
+                    </p>
+                  </div>
+                  <div className="glass rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <Type className="w-3.5 h-3.5 text-violet-400/70" />
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-violet-400/70 font-medium">Keyword</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Exact term matching with operators.
+                      Use <span className="text-slate-400 font-mono text-[10px]">&quot;quotes&quot;</span> for phrases,
+                      {" "}<span className="text-slate-400 font-mono text-[10px]">*</span> for wildcards,
+                      {" "}<span className="text-slate-400 font-mono text-[10px]">OR</span> between terms,
+                      and <span className="text-slate-400 font-mono text-[10px]">-</span> to exclude.
+                    </p>
                   </div>
                 </motion.div>
               </motion.div>
