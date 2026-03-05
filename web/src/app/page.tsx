@@ -64,17 +64,6 @@ export default function SearchPage() {
             </button>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="flex items-center gap-2"
-          >
-            <div className="w-2 h-2 rounded-full bg-emerald-400 pulse-dot" />
-            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-medium">
-              Connected
-            </span>
-          </motion.div>
         </header>
 
         {/* Main content area */}
