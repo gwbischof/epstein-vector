@@ -53,6 +53,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             NEXT_PUBLIC_MCP_URL=${{ secrets.MCP_URL }}
+            SECRET_PATH=${{ secrets.WEB_SECRET_PATH }}
+            API_KEY=${{ secrets.WEB_API_KEY }}
 
       - name: Output image
         id: image
@@ -121,7 +123,7 @@ jobs:
             if docker ps --format "table {{.Names}}" | grep -q "^$CONTAINER_NAME$"; then
               echo "Container is running!"
 
-              if curl -f -s https://"$DOMAIN"/ > /dev/null 2>&1; then
+              if curl -f -s https://"$DOMAIN"/health > /dev/null 2>&1; then
                 echo "Web UI health check passed!"
               else
                 echo "Health check failed, but container is running"

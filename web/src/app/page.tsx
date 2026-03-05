@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { Sparkles, Brain, Type, ChevronRight, Copy, Check, Plug } from "lucide-react";
 import { Starfield } from "@/components/starfield";
-import { ApiKeyInput } from "@/components/api-key-input";
 import { SearchBar } from "@/components/search-bar";
 import { SearchModeToggle } from "@/components/search-mode-toggle";
 import { SearchResults } from "@/components/search-results";
@@ -64,8 +63,12 @@ export default function SearchPage() {
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
+            className="flex items-center gap-2"
           >
-            <ApiKeyInput />
+            <div className="w-2 h-2 rounded-full bg-emerald-400 pulse-dot" />
+            <span className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-medium">
+              Connected
+            </span>
           </motion.div>
         </header>
 

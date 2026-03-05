@@ -22,6 +22,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+ARG SECRET_PATH=""
+ARG API_KEY=""
+ENV SECRET_PATH=$SECRET_PATH
+ENV API_KEY=$API_KEY
+
 RUN addgroup --system --gid 1001 appgroup && \
     adduser --system --uid 1001 appuser
 

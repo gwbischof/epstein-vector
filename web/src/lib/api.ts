@@ -7,7 +7,6 @@ const BASE_URL = typeof window !== "undefined" ? window.location.origin : "";
 
 export async function vectorSearch(
   query: string,
-  apiKey: string,
   limit: number = 20,
   offset: number = 0,
   signal?: AbortSignal,
@@ -18,14 +17,12 @@ export async function vectorSearch(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": apiKey,
     },
     body: JSON.stringify(body),
     signal,
   });
 
   if (!res.ok) {
-    if (res.status === 401) throw new Error("Invalid API key");
     throw new Error(`Search failed (${res.status})`);
   }
 
@@ -34,7 +31,6 @@ export async function vectorSearch(
 
 export async function textSearch(
   query: string,
-  apiKey: string,
   limit: number = 20,
   offset: number = 0,
   signal?: AbortSignal,
@@ -45,14 +41,12 @@ export async function textSearch(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": apiKey,
     },
     body: JSON.stringify(body),
     signal,
   });
 
   if (!res.ok) {
-    if (res.status === 401) throw new Error("Invalid API key");
     throw new Error(`Search failed (${res.status})`);
   }
 
@@ -61,16 +55,13 @@ export async function textSearch(
 
 export async function getDocument(
   eftaId: string,
-  apiKey: string,
   signal?: AbortSignal,
 ): Promise<{ text: string }> {
   const res = await fetch(`${BASE_URL}/get_document/${eftaId}`, {
-    headers: { "X-API-Key": apiKey },
     signal,
   });
 
   if (!res.ok) {
-    if (res.status === 401) throw new Error("Invalid API key");
     if (res.status === 404) throw new Error("Document not found");
     throw new Error(`Failed to fetch document (${res.status})`);
   }
@@ -81,7 +72,6 @@ export async function getDocument(
 export async function similarSearch(
   eftaId: string,
   chunkIndex: number,
-  apiKey: string,
   limit: number = 20,
   offset: number = 0,
   signal?: AbortSignal,
@@ -92,14 +82,12 @@ export async function similarSearch(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": apiKey,
     },
     body: JSON.stringify(body),
     signal,
   });
 
   if (!res.ok) {
-    if (res.status === 401) throw new Error("Invalid API key");
     throw new Error(`Similar search failed (${res.status})`);
   }
 

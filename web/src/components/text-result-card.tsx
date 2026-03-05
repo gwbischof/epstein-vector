@@ -95,11 +95,9 @@ export function TextResultCard({ result, index, onFindSimilar }: TextResultCardP
         <button
           onClick={async () => {
             if (fullText !== null) { setFullText(null); return; }
-            const apiKey = localStorage.getItem("epstein-api-key") ?? "";
-            if (!apiKey) return;
             setFullTextLoading(true);
             try {
-              const doc = await getDocument(result.efta_id, apiKey);
+              const doc = await getDocument(result.efta_id);
               setFullText(doc.text);
             } catch { setFullText("Failed to load document text."); }
             finally { setFullTextLoading(false); }

@@ -31,16 +31,7 @@ export function useSearch() {
 
   const search = useCallback(
     async (q: string, m: SearchMode) => {
-      const apiKey =
-        typeof window !== "undefined"
-          ? localStorage.getItem("epstein-api-key") ?? ""
-          : "";
-
       if (!q.trim()) return;
-      if (!apiKey) {
-        setError("Please enter an API key first");
-        return;
-      }
 
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -56,13 +47,13 @@ export function useSearch() {
 
       try {
         if (m === "semantic") {
-          const res = await vectorSearch(q, apiKey, PAGE_SIZE, 0, controller.signal);
+          const res = await vectorSearch(q, PAGE_SIZE, 0, controller.signal);
           setVectorResults(res.results);
           setTextResults([]);
           setHasMore(res.results.length >= PAGE_SIZE);
           setTotalResults(null); // vector search has no total
         } else {
-          const res = await textSearch(q, apiKey, PAGE_SIZE, 0, controller.signal);
+          const res = await textSearch(q, PAGE_SIZE, 0, controller.signal);
           setTextResults(res.results);
           setVectorResults([]);
           setHasMore(res.results.length >= PAGE_SIZE);
@@ -80,15 +71,6 @@ export function useSearch() {
 
   const findSimilar = useCallback(
     async (eftaId: string, chunkIndex: number) => {
-      const apiKey =
-        typeof window !== "undefined"
-          ? localStorage.getItem("epstein-api-key") ?? ""
-          : "";
-      if (!apiKey) {
-        setError("Please enter an API key first");
-        return;
-      }
-
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -103,7 +85,7 @@ export function useSearch() {
       lastSearchRef.current = { kind: "similar", eftaId, chunkIndex };
 
       try {
-        const res = await similarSearch(eftaId, chunkIndex, apiKey, PAGE_SIZE, 0, controller.signal);
+        const res = await similarSearch(eftaId, chunkIndex, PAGE_SIZE, 0, controller.signal);
         setVectorResults(res.results);
         setTextResults([]);
         setHasMore(res.results.length >= PAGE_SIZE);
@@ -121,29 +103,23 @@ export function useSearch() {
     const last = lastSearchRef.current;
     if (!last || loadingMore || !hasMore) return;
 
-    const apiKey =
-      typeof window !== "undefined"
-        ? localStorage.getItem("epstein-api-key") ?? ""
-        : "";
-    if (!apiKey) return;
-
     const controller = new AbortController();
     setLoadingMore(true);
 
     try {
       if (last.kind === "similar") {
         const offset = vectorResults.length;
-        const res = await similarSearch(last.eftaId, last.chunkIndex, apiKey, PAGE_SIZE, offset, controller.signal);
+        const res = await similarSearch(last.eftaId, last.chunkIndex, PAGE_SIZE, offset, controller.signal);
         setVectorResults((prev) => [...prev, ...res.results]);
         setHasMore(res.results.length >= PAGE_SIZE);
       } else if (last.mode === "semantic") {
         const offset = vectorResults.length;
-        const res = await vectorSearch(last.query, apiKey, PAGE_SIZE, offset, controller.signal);
+        const res = await vectorSearch(last.query, PAGE_SIZE, offset, controller.signal);
         setVectorResults((prev) => [...prev, ...res.results]);
         setHasMore(res.results.length >= PAGE_SIZE);
       } else {
         const offset = textResults.length;
-        const res = await textSearch(last.query, apiKey, PAGE_SIZE, offset, controller.signal);
+        const res = await textSearch(last.query, PAGE_SIZE, offset, controller.signal);
         setTextResults((prev) => [...prev, ...res.results]);
         setHasMore(res.results.length >= PAGE_SIZE);
       }
