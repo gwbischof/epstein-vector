@@ -67,18 +67,6 @@ Query syntax:
 | NOT | `island -vacation` | Exclude a term |
 | Wildcard | `maxw*` | Prefix match |
 
-#### POST /fuzzy_search
-
-Trigram search — typo-tolerant matching for OCR errors and misspellings.
-
-```bash
-curl -X POST http://localhost:8000/fuzzy_search \
-  -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"query": "Maxwel", "limit": 10}'
-```
-
-Additional parameter: `exclude_exact` (default false) — exclude documents that keyword search already matches.
-
 #### POST /similarity_search
 
 Find documents similar to a given chunk — uses the existing embedding without re-encoding.
@@ -225,7 +213,7 @@ Stage 2 (GPU):
 
   - **Short docs** (< 200 words): embedded as a single chunk
   - **Long docs**: split into multiple chunks with overlap for context continuity
-  - **Sentinel chunks**: documents that fail quality checks (< 5 words, or < 50% alphabetic characters) get a single chunk with `skip_embedding=True`. The document text is still stored in the chunk so it appears in text search and fuzzy search via the `tsv` column — it just doesn't get a vector embedding, so it won't appear in vector/similarity search.
+  - **Sentinel chunks**: documents that fail quality checks (< 5 words, or < 50% alphabetic characters) get a single chunk with `skip_embedding=True`. The document text is still stored in the chunk so it appears in text search via the `tsv` column — it just doesn't get a vector embedding, so it won't appear in vector/similarity search.
 
 **Extracted field inference** — The `extracted` field exists in JSONL but not in the `documents` table. It has a perfect 1:1 correlation with `word_count >= 5`. The GPU worker infers `extracted = (word_count >= 5)` when reconstructing docs for chunking.
 
@@ -247,7 +235,7 @@ documents                          chunks
 
 - `embedding` is `halfvec(1024)` — half-precision vectors for 50% storage savings with HNSW index
 - `tsv` is auto-populated by a trigger from `text` using `to_tsvector('english', text)`, with a GIN index for full-text search
-- Sentinel chunks have `embedding = NULL` — excluded from vector/similarity search by `WHERE embedding IS NOT NULL`, but included in text/fuzzy search via `tsv`
+- Sentinel chunks have `embedding = NULL` — excluded from vector/similarity search by `WHERE embedding IS NOT NULL`, but included in text search via `tsv`
 
 ## Distributed GPU Ingestion
 
