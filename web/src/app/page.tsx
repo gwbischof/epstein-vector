@@ -90,7 +90,7 @@ export default function SearchPage() {
                     <span className="text-cyan-400">Epstein</span> Document Search
                   </h1>
                   <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-                    Semantic and keyword search across the DOJ Epstein File Transparency Act.
+                    Semantic and keyword search across the DOJ Epstein Files Transparency Act.
                     Search by meaning or exact terms across all released datasets.
                   </p>
                 </motion.div>
@@ -297,7 +297,7 @@ export default function SearchPage() {
         {/* Footer */}
         <footer className="px-6 py-4 text-center">
           <p className="text-[10px] text-slate-700 uppercase tracking-widest">
-            Epstein File Transparency Act &middot; DOJ Public Records
+            Epstein Files Transparency Act &middot; DOJ Public Records
           </p>
         </footer>
       </div>
