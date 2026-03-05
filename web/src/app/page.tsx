@@ -127,10 +127,10 @@ export default function SearchPage() {
                   transition={{ duration: 0.8, delay: 0.9 }}
                   className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8"
                 >
-                  {/* Search tips — both rendered, only active one visible */}
-                  <div className="relative">
+                  {/* Search tips — both in same grid cell, container takes max height */}
+                  <div className="grid [&>*]:col-start-1 [&>*]:row-start-1">
                     <div
-                      className={`transition-opacity duration-200 ${mode === "semantic" ? "opacity-100" : "opacity-0 pointer-events-none absolute inset-0"}`}
+                      className={`transition-opacity duration-200 ${mode === "semantic" ? "opacity-100" : "opacity-0 pointer-events-none"}`}
                     >
                       <div
                         className="glass rounded-xl overflow-hidden glow-cyan h-full"
@@ -169,7 +169,7 @@ export default function SearchPage() {
                       </div>
                     </div>
                     <div
-                      className={`transition-opacity duration-200 ${mode === "keyword" ? "opacity-100" : "opacity-0 pointer-events-none absolute inset-0"}`}
+                      className={`transition-opacity duration-200 ${mode === "keyword" ? "opacity-100" : "opacity-0 pointer-events-none"}`}
                     >
                       <div
                         className="glass rounded-xl overflow-hidden glow-violet h-full"
