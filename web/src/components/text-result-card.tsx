@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, ExternalLink, Hash, BookOpen, Sparkles, AlignLeft } from "lucide-react";
+import { FileText, ExternalLink, Hash, BookOpen, Sparkles, AlignLeft, Copy, Check } from "lucide-react";
 import type { TextResult } from "@/lib/types";
 import { eftaUrl } from "@/lib/utils";
 import { getDocument } from "@/lib/api";
@@ -16,6 +16,7 @@ interface TextResultCardProps {
 export function TextResultCard({ result, index, onFindSimilar }: TextResultCardProps) {
   const [fullText, setFullText] = useState<string | null>(null);
   const [fullTextLoading, setFullTextLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   return (
     <motion.div
@@ -111,8 +112,18 @@ export function TextResultCard({ result, index, onFindSimilar }: TextResultCardP
       </div>
 
       {fullText !== null && (
-        <div className="mt-3 p-3 rounded-lg bg-slate-900/50 border border-slate-700/30 max-h-96 overflow-y-auto">
-          <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono leading-relaxed">{fullText}</pre>
+        <div className="mt-3 rounded-lg bg-slate-900/50 border border-slate-700/30">
+          <div className="flex justify-end px-3 pt-2">
+            <button
+              onClick={() => { navigator.clipboard.writeText(fullText); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+              className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-cyan-400 transition-colors"
+            >
+              {copied ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
+            </button>
+          </div>
+          <div className="px-3 pb-3 max-h-96 overflow-y-auto">
+            <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono leading-relaxed">{fullText}</pre>
+          </div>
         </div>
       )}
     </motion.div>

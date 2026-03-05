@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, ChevronDown, ChevronUp, ExternalLink, Layers, Sparkles, AlignLeft } from "lucide-react";
+import { FileText, ChevronDown, ChevronUp, ExternalLink, Layers, Sparkles, AlignLeft, Copy, Check } from "lucide-react";
 import type { VectorResult } from "@/lib/types";
 import { eftaUrl, highlightExactTerms, cleanText } from "@/lib/utils";
 import { getDocument } from "@/lib/api";
@@ -30,6 +30,7 @@ export function VectorResultCard({ result, index, query, onFindSimilar }: Vector
   const [expanded, setExpanded] = useState(false);
   const [fullText, setFullText] = useState<string | null>(null);
   const [fullTextLoading, setFullTextLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const cleaned = cleanText(result.text);
   const preview = cleaned.length > 300 && !expanded ? cleaned.slice(0, 300) + "..." : cleaned;
 
@@ -163,8 +164,18 @@ export function VectorResultCard({ result, index, query, onFindSimilar }: Vector
       </div>
 
       {fullText !== null && (
-        <div className="mt-3 p-3 rounded-lg bg-slate-900/50 border border-slate-700/30 max-h-96 overflow-y-auto">
-          <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono leading-relaxed">{fullText}</pre>
+        <div className="mt-3 rounded-lg bg-slate-900/50 border border-slate-700/30">
+          <div className="flex justify-end px-3 pt-2">
+            <button
+              onClick={() => { navigator.clipboard.writeText(fullText); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+              className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-cyan-400 transition-colors"
+            >
+              {copied ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
+            </button>
+          </div>
+          <div className="px-3 pb-3 max-h-96 overflow-y-auto">
+            <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono leading-relaxed">{fullText}</pre>
+          </div>
         </div>
       )}
     </motion.div>
