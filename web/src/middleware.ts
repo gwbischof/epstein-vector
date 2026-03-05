@@ -19,13 +19,14 @@ function isApiPath(pathname: string): boolean {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // API paths: inject API key header and pass through
+  // API paths: rewrite to backend with API key header
   if (isApiPath(pathname)) {
-    if (!API_KEY) return NextResponse.next();
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("X-API-Key", API_KEY);
-    return NextResponse.next({
-      request: { headers: requestHeaders },
+    const backendUrl = new URL(pathname + request.nextUrl.search, "https://vector.korroni.cloud");
+    const headers = new Headers(request.headers);
+    if (API_KEY) headers.set("X-API-Key", API_KEY);
+    headers.delete("host");
+    return NextResponse.rewrite(backendUrl, {
+      request: { headers },
     });
   }
 
