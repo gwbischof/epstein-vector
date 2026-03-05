@@ -3,17 +3,15 @@
 import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { SearchX, Radar } from "lucide-react";
-import type { VectorResult, TextResult, FuzzyResult, SearchMode } from "@/lib/types";
+import type { VectorResult, TextResult, SearchMode } from "@/lib/types";
 import { VectorResultCard } from "./vector-result-card";
 import { TextResultCard } from "./text-result-card";
-import { FuzzyResultCard } from "./fuzzy-result-card";
 
 interface SearchResultsProps {
   mode: SearchMode;
   query: string;
   vectorResults: VectorResult[];
   textResults: TextResult[];
-  fuzzyResults: FuzzyResult[];
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
@@ -28,7 +26,6 @@ export function SearchResults({
   query,
   vectorResults,
   textResults,
-  fuzzyResults,
   loading,
   loadingMore,
   error,
@@ -75,7 +72,6 @@ export function SearchResults({
   if (loading) {
     const loadingText =
       mode === "semantic" ? "Computing embeddings..." :
-      mode === "fuzzy" ? "Fuzzy matching..." :
       "Searching documents...";
 
     return (
@@ -98,7 +94,6 @@ export function SearchResults({
 
   const results =
     mode === "semantic" ? vectorResults :
-    mode === "fuzzy" ? fuzzyResults :
     textResults;
 
   if (hasSearched && results.length === 0) {
@@ -129,10 +124,6 @@ export function SearchResults({
         {mode === "semantic"
           ? vectorResults.map((r, i) => (
               <VectorResultCard key={`${r.efta_id}-${r.chunk_index}`} result={r} index={i} query={query} onFindSimilar={onFindSimilar} />
-            ))
-          : mode === "fuzzy"
-          ? fuzzyResults.map((r, i) => (
-              <FuzzyResultCard key={r.efta_id} result={r} index={i} query={query} onFindSimilar={onFindSimilar} />
             ))
           : textResults.map((r, i) => (
               <TextResultCard key={r.efta_id} result={r} index={i} onFindSimilar={onFindSimilar} />

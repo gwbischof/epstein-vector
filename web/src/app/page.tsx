@@ -7,7 +7,6 @@ import { ApiKeyInput } from "@/components/api-key-input";
 import { SearchBar } from "@/components/search-bar";
 import { SearchModeToggle } from "@/components/search-mode-toggle";
 import { SearchResults } from "@/components/search-results";
-import { ExcludeExactToggle } from "@/components/exclude-exact-toggle";
 import { useSearch } from "@/hooks/use-search";
 
 const EXAMPLE_QUERIES = [
@@ -17,7 +16,6 @@ const EXAMPLE_QUERIES = [
   { label: "Maxwell OR Brunel", desc: "OR" },
   { label: "island -vacation", desc: "NOT" },
   { label: "payments to politicians", desc: "semantic" },
-  { label: "Maxwel", desc: "fuzzy" },
 ];
 
 export default function SearchPage() {
@@ -26,11 +24,8 @@ export default function SearchPage() {
     setQuery,
     mode,
     setMode,
-    excludeExact,
-    setExcludeExact,
     vectorResults,
     textResults,
-    fuzzyResults,
     loading,
     loadingMore,
     error,
@@ -43,7 +38,7 @@ export default function SearchPage() {
     findSimilar,
   } = useSearch();
 
-  const hasResults = vectorResults.length > 0 || textResults.length > 0 || fuzzyResults.length > 0 || hasSearched;
+  const hasResults = vectorResults.length > 0 || textResults.length > 0 || hasSearched;
 
   return (
     <div className="relative min-h-screen noise">
@@ -119,9 +114,6 @@ export default function SearchPage() {
                   className="flex items-center justify-center gap-3 mb-4"
                 >
                   <SearchModeToggle mode={mode} onChange={setMode} />
-                  {mode === "fuzzy" && (
-                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
-                  )}
                 </motion.div>
 
                 {/* Search bar */}
@@ -175,9 +167,6 @@ export default function SearchPage() {
                 {/* Controls */}
                 <div className="flex items-center justify-center gap-3 mb-3 mt-2">
                   <SearchModeToggle mode={mode} onChange={setMode} />
-                  {mode === "fuzzy" && (
-                    <ExcludeExactToggle enabled={excludeExact} onChange={setExcludeExact} />
-                  )}
                 </div>
 
                 {/* Compact search bar */}
@@ -195,13 +184,13 @@ export default function SearchPage() {
                 </motion.div>
 
                 {/* Result count */}
-                {hasSearched && !loading && (vectorResults.length > 0 || textResults.length > 0 || fuzzyResults.length > 0) && (
+                {hasSearched && !loading && (vectorResults.length > 0 || textResults.length > 0) && (
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-1 h-1 rounded-full bg-cyan-500/50" />
                     <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
                       {totalResults != null
                         ? `${totalResults.toLocaleString()} results`
-                        : `${(mode === "semantic" ? vectorResults.length : mode === "fuzzy" ? fuzzyResults.length : textResults.length).toLocaleString()} results${hasMore ? "+" : ""}`
+                        : `${(mode === "semantic" ? vectorResults.length : textResults.length).toLocaleString()} results${hasMore ? "+" : ""}`
                       }
                     </span>
                   </div>
@@ -226,7 +215,6 @@ export default function SearchPage() {
                   query={query}
                   vectorResults={vectorResults}
                   textResults={textResults}
-                  fuzzyResults={fuzzyResults}
                   loading={loading}
                   loadingMore={loadingMore}
                   error={error}

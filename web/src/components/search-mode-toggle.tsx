@@ -1,13 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Brain, Type, Zap } from "lucide-react";
+import { Brain, Type } from "lucide-react";
 import type { SearchMode } from "@/lib/types";
 
 const MODES: { value: SearchMode; label: string; icon: typeof Brain }[] = [
   { value: "semantic", label: "Semantic", icon: Brain },
   { value: "keyword", label: "Keyword", icon: Type },
-  { value: "fuzzy", label: "Fuzzy", icon: Zap },
 ];
 
 interface SearchModeToggleProps {

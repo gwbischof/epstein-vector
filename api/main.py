@@ -45,8 +45,6 @@ async def lifespan(app: FastAPI):
     model = SentenceTransformer("BAAI/bge-large-en-v1.5", revision="d4aa6901d3a41ba39fb536a557fa166f842b0e09", device="cpu")
     search_module.set_model(model)
     logger.info("Embedding model loaded")
-    search_module.ensure_pg_trgm()
-    logger.info("pg_trgm extension and index ensured")
     yield
     close_pool()
     close_ingest_pool()
@@ -80,19 +78,11 @@ def text_search_endpoint(req: search_module.TextSearchRequest) -> search_module.
     return search_module.text_search(req)
 
 
-@app.post("/fuzzy_search", dependencies=[Depends(verify_api_key)])
-def fuzzy_search_endpoint(req: search_module.FuzzySearchRequest) -> search_module.FuzzySearchResponse:
-    return search_module.fuzzy_search(req)
-
 
 @app.post("/text_search/count", dependencies=[Depends(verify_api_key)])
 def text_search_count_endpoint(req: search_module.CountRequest) -> search_module.CountResponse:
     return search_module.text_search_count(req)
 
-
-@app.post("/fuzzy_search/count", dependencies=[Depends(verify_api_key)])
-def fuzzy_search_count_endpoint(req: search_module.CountRequest) -> search_module.CountResponse:
-    return search_module.fuzzy_search_count(req)
 
 
 @app.post("/similarity_search", dependencies=[Depends(verify_api_key)])
