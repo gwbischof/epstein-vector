@@ -164,28 +164,65 @@ export default function SearchPage() {
                   className="mt-10 w-full grid grid-cols-1 sm:grid-cols-2 gap-3"
                 >
                   <div className="glass rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2.5">
+                    <div className="flex items-center gap-2 mb-3">
                       <Brain className="w-3.5 h-3.5 text-cyan-400/70" />
                       <span className="text-[10px] uppercase tracking-[0.2em] text-cyan-400/70 font-medium">Semantic</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Searches by <span className="text-slate-400">meaning</span>, not exact words. Good for concepts and topics
-                      &mdash; <span className="text-slate-400 font-mono text-[10px]">payments to politicians</span> finds
-                      documents about donations, wire transfers, and lobbying even if those exact words aren&apos;t used.
+                    <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                      Searches by <span className="text-slate-400">meaning</span>, not exact words.
+                      Finds documents about a concept even when they use different terminology.
+                      Best for open-ended research questions.
                     </p>
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">Examples</div>
+                      {[
+                        { q: "recruiting underage girls from schools", note: "finds victim testimony, FBI reports" },
+                        { q: "payments to politicians", note: "finds donations, wire transfers, lobbying" },
+                        { q: "destroying evidence before investigation", note: "finds shredding, wiping, deletion" },
+                        { q: "private flights to Caribbean islands", note: "finds flight logs, manifests, travel" },
+                      ].map((ex) => (
+                        <div key={ex.q} className="flex gap-2 text-[11px]">
+                          <button
+                            onClick={() => { setQuery(ex.q); setMode("semantic"); }}
+                            className="font-mono text-[10px] text-slate-400 hover:text-cyan-400 transition-colors text-left shrink-0"
+                          >
+                            {ex.q}
+                          </button>
+                          <span className="text-slate-600 hidden sm:inline">&mdash; {ex.note}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="glass rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2.5">
+                    <div className="flex items-center gap-2 mb-3">
                       <Type className="w-3.5 h-3.5 text-violet-400/70" />
                       <span className="text-[10px] uppercase tracking-[0.2em] text-violet-400/70 font-medium">Keyword</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Exact term matching with operators.
-                      Use <span className="text-slate-400 font-mono text-[10px]">&quot;quotes&quot;</span> for phrases,
-                      {" "}<span className="text-slate-400 font-mono text-[10px]">*</span> for wildcards,
-                      {" "}<span className="text-slate-400 font-mono text-[10px]">OR</span> between terms,
-                      and <span className="text-slate-400 font-mono text-[10px]">-</span> to exclude.
+                    <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                      Exact term matching with full-text search operators.
+                      Results are ranked by relevance. Best for finding specific names, phrases, and document references.
                     </p>
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">Syntax</div>
+                      {[
+                        { syntax: "Maxwell flight", note: "both words must appear (AND)" },
+                        { syntax: "\"wire transfer\"", note: "exact phrase match" },
+                        { syntax: "Maxwell OR Brunel", note: "either term matches" },
+                        { syntax: "island -vacation", note: "exclude a term (NOT)" },
+                        { syntax: "maxw*", note: "prefix wildcard" },
+                        { syntax: "+flight +log", note: "require specific terms" },
+                      ].map((ex) => (
+                        <div key={ex.syntax} className="flex gap-2 text-[11px] items-baseline">
+                          <button
+                            onClick={() => { setQuery(ex.syntax); setMode("keyword"); }}
+                            className="font-mono text-[10px] text-slate-400 hover:text-violet-400 transition-colors shrink-0"
+                          >
+                            {ex.syntax}
+                          </button>
+                          <span className="text-slate-600">&mdash; {ex.note}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </motion.div>
               </motion.div>
