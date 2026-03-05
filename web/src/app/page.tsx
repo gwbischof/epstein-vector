@@ -9,15 +9,6 @@ import { SearchModeToggle } from "@/components/search-mode-toggle";
 import { SearchResults } from "@/components/search-results";
 import { useSearch } from "@/hooks/use-search";
 
-const EXAMPLE_QUERIES = [
-  { label: "flight logs", desc: "plain search" },
-  { label: "maxw*", desc: "wildcard" },
-  { label: '"wire transfer"', desc: "exact phrase" },
-  { label: "Maxwell OR Brunel", desc: "OR" },
-  { label: "island -vacation", desc: "NOT" },
-  { label: "payments to politicians", desc: "semantic" },
-];
-
 export default function SearchPage() {
   const {
     query,
@@ -129,31 +120,6 @@ export default function SearchPage() {
                     onSearch={executeSearch}
                     loading={loading}
                   />
-                </motion.div>
-
-                {/* Example query chips */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.6, delay: 0.6 }}
-                  className="flex flex-col items-center gap-3"
-                >
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-600 uppercase tracking-widest">
-                    <Sparkles className="w-3 h-3" />
-                    Try a search
-                  </div>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    {EXAMPLE_QUERIES.map((eq) => (
-                      <button
-                        key={eq.label}
-                        onClick={() => setQuery(eq.label)}
-                        className="glass glass-hover rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-cyan-400 transition-colors flex items-center gap-1.5"
-                      >
-                        <span className="text-slate-300">{eq.label}</span>
-                        <span className="text-[9px] text-slate-600 uppercase tracking-wider">({eq.desc})</span>
-                      </button>
-                    ))}
-                  </div>
                 </motion.div>
 
                 {/* Search tips */}
