@@ -79,7 +79,7 @@ export default function SearchPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0, y: -30 }}
                 transition={{ duration: 0.4 }}
-                className="flex-1 flex flex-col items-center justify-center max-w-2xl w-full -mt-16"
+                className="flex-1 flex flex-col items-center max-w-2xl w-full pt-16"
               >
                 {/* Title */}
                 <motion.div
