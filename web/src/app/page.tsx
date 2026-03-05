@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Brain, Type } from "lucide-react";
+import { Sparkles, Brain, Type, ChevronRight } from "lucide-react";
 import { Starfield } from "@/components/starfield";
 import { ApiKeyInput } from "@/components/api-key-input";
 import { SearchBar } from "@/components/search-bar";
@@ -137,33 +137,38 @@ export default function SearchPage() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.25 }}
-                        className="glass rounded-xl p-6"
+                        className="glass rounded-xl overflow-hidden glow-cyan"
+                        style={{ borderTopColor: "rgba(34, 211, 238, 0.25)", borderTopWidth: 2 }}
                       >
-                        <div className="flex items-center gap-2.5 mb-3">
-                          <Brain className="w-4 h-4 text-cyan-400/70" />
-                          <span className="text-xs uppercase tracking-[0.2em] text-cyan-400/70 font-medium">Semantic Search</span>
+                        <div className="px-6 pt-5 pb-4">
+                          <div className="flex items-center gap-2.5 mb-1">
+                            <Brain className="w-4 h-4 text-cyan-400" />
+                            <span className="text-sm font-semibold tracking-wide text-cyan-400">Semantic Search</span>
+                          </div>
+                          <p className="text-sm text-slate-500 leading-relaxed">
+                            Searches by meaning, not exact words.
+                            Finds relevant documents even when they use different terminology.
+                          </p>
                         </div>
-                        <p className="text-sm text-slate-500 leading-relaxed mb-4">
-                          Searches by <span className="text-slate-400">meaning</span>, not exact words.
-                          Finds relevant documents even when they use different terminology.
-                          Best for open-ended research.
-                        </p>
-                        <div className="text-xs uppercase tracking-widest text-slate-600 mb-3">Try these</div>
-                        <div className="space-y-2.5">
-                          {[
-                            "recruiting underage girls from schools",
-                            "payments to politicians",
-                            "destroying evidence before investigation",
-                            "private flights to Caribbean islands",
-                          ].map((q) => (
-                            <button
-                              key={q}
-                              onClick={() => setQuery(q)}
-                              className="block w-full text-left font-mono text-xs text-slate-400 hover:text-cyan-400 transition-colors leading-relaxed"
-                            >
-                              {q}
-                            </button>
-                          ))}
+                        <div className="border-t border-slate-700/40 px-6 py-4">
+                          <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-3">Example queries</div>
+                          <div className="space-y-1">
+                            {[
+                              "recruiting underage girls from schools",
+                              "payments to politicians",
+                              "destroying evidence before investigation",
+                              "private flights to Caribbean islands",
+                            ].map((q) => (
+                              <button
+                                key={q}
+                                onClick={() => setQuery(q)}
+                                className="group flex items-center gap-2 w-full text-left rounded-lg px-3 py-2 -mx-3 hover:bg-cyan-500/5 transition-colors"
+                              >
+                                <ChevronRight className="w-3 h-3 text-slate-700 group-hover:text-cyan-400/60 transition-colors shrink-0" />
+                                <span className="font-mono text-xs text-slate-400 group-hover:text-cyan-300 transition-colors">{q}</span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </motion.div>
                     ) : (
@@ -173,19 +178,22 @@ export default function SearchPage() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.25 }}
-                        className="glass rounded-xl p-6"
+                        className="glass rounded-xl overflow-hidden glow-violet"
+                        style={{ borderTopColor: "rgba(139, 92, 246, 0.25)", borderTopWidth: 2 }}
                       >
-                        <div className="flex items-center gap-2.5 mb-3">
-                          <Type className="w-4 h-4 text-violet-400/70" />
-                          <span className="text-xs uppercase tracking-[0.2em] text-violet-400/70 font-medium">Keyword Search</span>
+                        <div className="px-6 pt-5 pb-4">
+                          <div className="flex items-center gap-2.5 mb-1">
+                            <Type className="w-4 h-4 text-violet-400" />
+                            <span className="text-sm font-semibold tracking-wide text-violet-400">Keyword Search</span>
+                          </div>
+                          <p className="text-sm text-slate-500 leading-relaxed">
+                            Exact term matching ranked by relevance.
+                            Best for specific names, phrases, and document references.
+                          </p>
                         </div>
-                        <p className="text-sm text-slate-500 leading-relaxed mb-4">
-                          Exact term matching ranked by relevance.
-                          Best for specific names, phrases, and document references.
-                        </p>
-                        <div className="text-xs uppercase tracking-widest text-slate-600 mb-3">Syntax</div>
-                        <table className="w-full text-sm">
-                          <tbody>
+                        <div className="border-t border-slate-700/40 px-6 py-4">
+                          <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-3">Syntax reference</div>
+                          <div className="space-y-1">
                             {[
                               { syntax: "Maxwell flight", note: "AND — both required" },
                               { syntax: "\"wire transfer\"", note: "exact phrase" },
@@ -194,20 +202,17 @@ export default function SearchPage() {
                               { syntax: "maxw*", note: "prefix wildcard" },
                               { syntax: "+flight +log", note: "require terms" },
                             ].map((ex) => (
-                              <tr key={ex.syntax} className="group">
-                                <td className="py-1 pr-4 whitespace-nowrap align-baseline">
-                                  <button
-                                    onClick={() => setQuery(ex.syntax)}
-                                    className="font-mono text-xs text-slate-400 group-hover:text-violet-400 transition-colors"
-                                  >
-                                    {ex.syntax}
-                                  </button>
-                                </td>
-                                <td className="py-1 text-slate-600 align-baseline">{ex.note}</td>
-                              </tr>
+                              <button
+                                key={ex.syntax}
+                                onClick={() => setQuery(ex.syntax)}
+                                className="group flex items-baseline gap-3 w-full text-left rounded-lg px-3 py-1.5 -mx-3 hover:bg-violet-500/5 transition-colors"
+                              >
+                                <code className="font-mono text-xs text-slate-400 group-hover:text-violet-300 transition-colors shrink-0">{ex.syntax}</code>
+                                <span className="text-xs text-slate-600">{ex.note}</span>
+                              </button>
                             ))}
-                          </tbody>
-                        </table>
+                          </div>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
