@@ -112,7 +112,7 @@ export default function SearchPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.45 }}
-                  className="w-full mb-10"
+                  className="w-full mb-6"
                 >
                   <SearchBar
                     query={query}
@@ -127,15 +127,15 @@ export default function SearchPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.8, delay: 0.9 }}
-                  className="mt-10 w-full max-w-md"
+                  className="w-full max-w-md"
                 >
                   <AnimatePresence mode="wait">
                     {mode === "semantic" ? (
                       <motion.div
                         key="semantic-tip"
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
                         transition={{ duration: 0.25 }}
                         className="glass rounded-xl p-6"
                       >
@@ -169,9 +169,9 @@ export default function SearchPage() {
                     ) : (
                       <motion.div
                         key="keyword-tip"
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
                         transition={{ duration: 0.25 }}
                         className="glass rounded-xl p-6"
                       >
