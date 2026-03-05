@@ -3,7 +3,7 @@ import type {
   TextSearchResponse,
 } from "./types";
 
-const BASE_URL = typeof window !== "undefined" ? window.location.origin : "";
+const BASE_URL = typeof window !== "undefined" ? window.location.origin + "/api" : "/api";
 
 export async function vectorSearch(
   query: string,

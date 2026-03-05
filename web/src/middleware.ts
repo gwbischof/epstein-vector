@@ -5,24 +5,13 @@ const SECRET_PATH = process.env.SECRET_PATH;
 const API_KEY = process.env.API_KEY;
 const BACKEND_URL = "https://vector.korroni.cloud";
 
-const API_PATHS = [
-  "/vector_search",
-  "/text_search",
-  "/similarity_search",
-  "/get_document",
-  "/health",
-];
-
-function isApiPath(pathname: string): boolean {
-  return API_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // API paths: proxy to backend with API key
-  if (isApiPath(pathname)) {
-    const url = BACKEND_URL + pathname + request.nextUrl.search;
+  // /api/* paths: strip prefix and proxy to backend with API key
+  if (pathname.startsWith("/api/")) {
+    const backendPath = pathname.slice(4); // strip "/api"
+    const url = BACKEND_URL + backendPath + request.nextUrl.search;
     const headers: Record<string, string> = {
       "Content-Type": request.headers.get("Content-Type") || "application/json",
     };
