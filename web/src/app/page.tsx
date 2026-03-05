@@ -1,7 +1,8 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Brain, Type, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, Brain, Type, ChevronRight, Copy, Check, Plug } from "lucide-react";
 import { Starfield } from "@/components/starfield";
 import { ApiKeyInput } from "@/components/api-key-input";
 import { SearchBar } from "@/components/search-bar";
@@ -217,6 +218,11 @@ export default function SearchPage() {
                     )}
                   </AnimatePresence>
                 </motion.div>
+
+                {/* MCP connector guide */}
+                {process.env.NEXT_PUBLIC_MCP_URL && (
+                  <McpGuide url={process.env.NEXT_PUBLIC_MCP_URL} />
+                )}
               </motion.div>
             ) : (
               /* Results state */
@@ -298,5 +304,65 @@ export default function SearchPage() {
         </footer>
       </div>
     </div>
+  );
+}
+
+function McpGuide({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.8, delay: 1.1 }}
+      className="w-full max-w-md mt-8"
+    >
+      <div className="glass rounded-xl overflow-hidden" style={{ borderTopColor: "rgba(100, 200, 130, 0.25)", borderTopWidth: 2 }}>
+        <div className="px-6 pt-5 pb-4">
+          <div className="flex items-center gap-2.5 mb-1">
+            <Plug className="w-4 h-4 text-emerald-400" />
+            <span className="text-sm font-semibold tracking-wide text-emerald-400">Use with AI Assistants</span>
+          </div>
+          <p className="text-sm text-slate-500 leading-relaxed">
+            Connect this search engine to ChatGPT or Claude as an MCP tool.
+          </p>
+        </div>
+        <div className="border-t border-slate-700/40 px-6 py-4 space-y-4">
+          {/* URL with copy */}
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-600 font-medium mb-2">MCP Server URL</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 font-mono text-xs text-slate-400 bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/30 truncate">
+                {url}
+              </code>
+              <button
+                onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                className="shrink-0 p-2 rounded-lg border border-slate-700/30 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors"
+              >
+                {copied
+                  ? <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  : <Copy className="w-3.5 h-3.5 text-slate-500" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Instructions */}
+          <div className="space-y-3">
+            <div>
+              <div className="text-xs font-medium text-slate-400 mb-1">Claude</div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Settings &rarr; Connectors &rarr; Add custom connector &rarr; paste URL
+              </p>
+            </div>
+            <div>
+              <div className="text-xs font-medium text-slate-400 mb-1">ChatGPT</div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Settings &rarr; Apps &rarr; Advanced settings &rarr; Developer mode &rarr; Create app &rarr; paste URL
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }

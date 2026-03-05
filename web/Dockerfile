@@ -7,6 +7,8 @@ RUN npm ci --ignore-scripts
 # Stage 2: Build the application
 FROM node:22-alpine AS builder
 WORKDIR /app
+ARG NEXT_PUBLIC_MCP_URL=""
+ENV NEXT_PUBLIC_MCP_URL=$NEXT_PUBLIC_MCP_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p public && npm run build
